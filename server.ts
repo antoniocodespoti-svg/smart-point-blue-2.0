@@ -480,7 +480,114 @@ function generateFallbackMenuPlan(reqBody: any) {
 }
 
 // Resilient food analyzer fallback
-function generateFallbackFoodAnalysis(cibo: string): any {
+function generateFallbackFoodAnalysis(cibo: string, ingredienti?: any[]): any {
+  if (ingredienti && Array.isArray(ingredienti) && ingredienti.length > 0) {
+    let totCalorie = 0;
+    let totGrassiSaturi = 0;
+    let totZuccheri = 0;
+    let totProteine = 0;
+    const namesDetail: string[] = [];
+
+    ingredienti.forEach(ing => {
+      const nameLower = (ing.nome || "").toLowerCase().trim();
+      const q = ing.quantita || "100g";
+      let multiplier = 1.0;
+
+      const numericMatch = q.match(/(\d+(?:\.\d+)?)/);
+      if (numericMatch) {
+        const value = parseFloat(numericMatch[1]);
+        if (q.toLowerCase().includes("g")) {
+          multiplier = value / 100.0;
+        } else if (q.toLowerCase().includes("cucchia") || q.toLowerCase().includes("cucchiaio")) {
+          multiplier = value * 0.15; // standard ~15g for generic calculations
+        } else {
+          multiplier = value;
+        }
+      }
+
+      // Default raw weights and nutrients per 100g
+      let calIng = 120;
+      let fatIng = 1.0;
+      let sugIng = 2.0;
+      let proIng = 5.0;
+
+      if (nameLower.includes("pasta") || nameLower.includes("spaghetti") || nameLower.includes("penne")) {
+        calIng = 350; // Dry raw pasta is 350-360 kcal
+        fatIng = 0.5;
+        sugIng = 1.5;
+        proIng = 12.0;
+      } else if (nameLower.includes("riso")) {
+        calIng = 350; // Dry raw rice
+        fatIng = 0.6;
+        sugIng = 0.5;
+        proIng = 7.0;
+      } else if (nameLower.includes("olio")) {
+        calIng = 884; // 100g extra virgin olive oil
+        fatIng = 13.8;
+        sugIng = 0;
+        proIng = 0;
+      } else if (nameLower.includes("burro")) {
+        calIng = 717;
+        fatIng = 51.0;
+        sugIng = 0.1;
+        proIng = 0.8;
+      } else if (nameLower.includes("pane")) {
+        calIng = 250;
+        fatIng = 0.6;
+        sugIng = 2.0;
+        proIng = 8.0;
+      } else if (nameLower.includes("parmigiano") || nameLower.includes("grana") || nameLower.includes("formaggio")) {
+        calIng = 392;
+        fatIng = 16.0;
+        sugIng = 0;
+        proIng = 33.0;
+      } else if (nameLower.includes("pollo") || nameLower.includes("tacchino")) {
+        calIng = 110; // Raw chicken chest is lean
+        fatIng = 0.2;
+        sugIng = 0;
+        proIng = 23.0;
+      } else if (nameLower.includes("uov")) {
+        calIng = 143;
+        fatIng = 3.1;
+        sugIng = 0.4;
+        proIng = 12.5;
+      } else if (nameLower.includes("pomodoro") || nameLower.includes("zucchina") || nameLower.includes("carota") || nameLower.includes("insalata") || nameLower.includes("verdura")) {
+        calIng = 20;
+        fatIng = 0;
+        sugIng = 3.5;
+        proIng = 1.1;
+      } else if (nameLower.includes("zucchero")) {
+        calIng = 387;
+        fatIng = 0;
+        sugIng = 100.0;
+        proIng = 0;
+      }
+
+      totCalorie += Math.round(calIng * multiplier);
+      totGrassiSaturi += Number((fatIng * multiplier).toFixed(1));
+      totZuccheri += Number((sugIng * multiplier).toFixed(1));
+      totProteine += Number((proIng * multiplier).toFixed(1));
+      namesDetail.push(`${ing.nome} (${q})`);
+    });
+
+    let smartPoints = Math.round((totCalorie * 0.0305) + (totGrassiSaturi * 0.275) + (totZuccheri * 0.12) - (totProteine * 0.098));
+    if (smartPoints < 0) smartPoints = 0;
+
+    return {
+      nome: "Composto Ingredienti (Calcolato a Crudo)",
+      porzione: namesDetail.join(", "),
+      calorie: totCalorie,
+      grassiSaturi: Number(totGrassiSaturi.toFixed(1)),
+      zuccheri: Number(totZuccheri.toFixed(1)),
+      proteine: Number(totProteine.toFixed(1)),
+      smartPoints: smartPoints,
+      isZeroPoints: smartPoints === 0,
+      motivoZeroPoints: "Questo punteggio è basato sull'analisi e somma dei valori a crudo degli ingredienti forniti.",
+      alternativeZeroPoints: ["Sostituire riso o pasta raffinati con verdure a zero punti o shirataki", "Moderare l'olio usando succo di limone o spezie"],
+      consiglioPreparazione: "Mantieni l'olio dosato di precisione al cucchiaino a crudo per non alzare i punti."
+    };
+  }
+
   const queryLower = cibo.toLowerCase().trim();
   
   let nome = cibo.charAt(0).toUpperCase() + cibo.slice(1);
@@ -658,9 +765,8 @@ app.post("/api/generate-menu", async (req, res) => {
     const promptTokens = 1910 + Math.floor(Math.random() * 200);
     const candidatesTokens = 1450 + Math.floor(Math.random() * 200);
     const totalTokens = promptTokens + candidatesTokens;
-    const priceInputUSD = (promptTokens / 1_000_000) * 0.075;
-    const priceOutputUSD = (candidatesTokens / 1_000_000) * 0.30;
-    const costEur = Number(((priceInputUSD + priceOutputUSD) * 0.92).toFixed(6));
+    // Ogni 5000 punti (token) dell'utente corrispondono a 2 euro di consumo AI
+    const costEur = Number(((totalTokens / 5000) * 2).toFixed(6));
 
     fallbackResult.usageReport = {
       promptTokens,
@@ -826,9 +932,8 @@ app.post("/api/generate-menu", async (req, res) => {
     const promptTokens = Number(usage.promptTokenCount || usage.promptTokens || 1850 + Math.floor(Math.random() * 300));
     const candidatesTokens = Number(usage.candidatesTokenCount || usage.candidatesTokens || 1500 + Math.floor(Math.random() * 250));
     const totalTokens = promptTokens + candidatesTokens;
-    const priceInputUSD = (promptTokens / 1_000_000) * 0.075;
-    const priceOutputUSD = (candidatesTokens / 1_000_000) * 0.30;
-    const costEur = Number(((priceInputUSD + priceOutputUSD) * 0.92).toFixed(6));
+    // Ogni 5000 punti (token) dell'utente corrispondono a 2 euro di consumo AI
+    const costEur = Number(((totalTokens / 5000) * 2).toFixed(6));
 
     data.usageReport = {
       promptTokens,
@@ -851,9 +956,8 @@ app.post("/api/generate-menu", async (req, res) => {
       const promptTokens = 1910 + Math.floor(Math.random() * 200);
       const candidatesTokens = 1450 + Math.floor(Math.random() * 200);
       const totalTokens = promptTokens + candidatesTokens;
-      const priceInputUSD = (promptTokens / 1_000_000) * 0.075;
-      const priceOutputUSD = (candidatesTokens / 1_000_000) * 0.30;
-      const costEur = Number(((priceInputUSD + priceOutputUSD) * 0.92).toFixed(6));
+      // Ogni 5000 punti (token) dell'utente corrispondono a 2 euro di consumo AI
+      const costEur = Number(((totalTokens / 5000) * 2).toFixed(6));
 
       fallbackResult.usageReport = {
         promptTokens,
@@ -872,23 +976,22 @@ app.post("/api/generate-menu", async (req, res) => {
 
 // 2. API: Analyze Food Nutrition and Calculate SmartPoints Blue
 app.post("/api/analyze-food", async (req, res) => {
-  const { cibo } = req.body;
-  if (!cibo) {
-    return res.status(400).json({ error: "Specificare il nome del cibo o ingrediente da analizzare." });
+  const { cibo, ingredienti } = req.body;
+  if (!cibo && (!ingredienti || !Array.isArray(ingredienti) || ingredienti.length === 0)) {
+    return res.status(400).json({ error: "Specificare il nome del cibo o la lista di ingredienti da analizzare." });
   }
 
   const isMockKey = !apiKey || apiKey === "MY_GEMINI_API_KEY";
   if (isMockKey) {
     console.log("-> Analyzing food with static fallback.");
-    const analysisResult = generateFallbackFoodAnalysis(cibo);
+    const analysisResult = generateFallbackFoodAnalysis(cibo || "", ingredienti);
     
     // Simulate lightweight token usage for food analysis
     const promptTokens = 490 + Math.floor(Math.random() * 80);
     const candidatesTokens = 220 + Math.floor(Math.random() * 55);
     const totalTokens = promptTokens + candidatesTokens;
-    const priceInputUSD = (promptTokens / 1_000_000) * 0.075;
-    const priceOutputUSD = (candidatesTokens / 1_000_000) * 0.30;
-    const costEur = Number(((priceInputUSD + priceOutputUSD) * 0.92).toFixed(6));
+    // Ogni 5000 punti (token) dell'utente corrispondono a 2 euro di consumo AI
+    const costEur = Number(((totalTokens / 5000) * 2).toFixed(6));
 
     analysisResult.usageReport = {
       promptTokens,
@@ -902,15 +1005,40 @@ app.post("/api/analyze-food", async (req, res) => {
   }
 
   try {
-    const promptText = `
-      Analizza l'alimento o composto culinario "${cibo}" secondo le linee guida degli SmartPoints BLU.
-      Determina se appartiene alla lista dei cibi a ZERO PUNTI (ZeroPoint foods) del piano Blu (es. petto di pollo, uova, la maggior parte di frutta e verdura, yogurt greco magro, legumi, merluzzo o pesce naturale, tofu).
-      Se è un cibo a zero punti, allora il totale SmartPoints è 0. Fornisci i valori nutrizionali stimati per una porzione standard adatta a quel cibo.
-      Se non è un cibo a zero punti (es. avocado, pane, olio, dolci, riso, pasta), stima i suoi valori nutrizionali per una porzione standard (Calorie, Grassi saturi, Zuccheri, Proteine) e calcola gli SmartPoints usando la formula ufficiale:
-      SmartPoints = (Calorie * 0.0305) + (Grassi saturi * 0.275) + (Zuccheri * 0.12) - (Proteine * 0.098) arrotondato all'intero più vicino (minimo 0).
+    let promptText = "";
+    if (ingredienti && Array.isArray(ingredienti) && ingredienti.length > 0) {
+      const ingredientListStr = ingredienti
+        .map((i: any) => `- ${i.nome}: ${i.quantita || "non specificato"}`)
+        .join("\n");
+      promptText = `
+        Sei un nutrizionista di alto livello specializzato nel piano di dieta SmartPoints BLU.
+        Analizza i seguenti ingredienti per conto dell'utente, eseguendo la stima nutrizionale e il calcolo dei punti rigorosamente sui pesi e ingredienti A CRUDO (stato crudo prima di essere cucinati o cotti):
 
-      Rispondi in formato JSON seguendo questo schema esatto in lingua italiana.
-    `;
+        ${ingredientListStr}
+
+        Istruzioni operative:
+        1. Considera ciascun alimento nel suo peso e stato a crudo (ad esempio, la pasta secca, il riso crudo, le carni e i pesci crudi, i condimenti dosati prima dei pasti). La cottura a volte altera notevolmente il peso assorbendo o rilasciando liquidi, ma il calcolo di precisione va fatto a crudo.
+        2. Determina se vi sono cibi a ZERO PUNTI (ZeroPoint foods) del piano Blu (petto di pollo magro, uova, la maggior parte di frutta e verdura non amidacea, yogurt greco magro 0%, legumi cotti al naturale senza grassi, pesce fresco al naturale, tofu). A questi ingredienti assegna costantemente 0 punti nel conteggio SmartPoints, pur includendo i loro macro nell'energia complessiva.
+        3. Stima e somma i valori nutrizionali di tutti gli ingredienti a crudo: Calorie finali, Grassi saturi, Zuccheri e Proteine totali della ricetta.
+        4. Calcola gli SmartPoints del composto finale applicando la formula ufficiale del piano Blu:
+           SmartPoints = (Calorie complessive * 0.0305) + (Grassi saturi complessivi * 0.275) + (Zuccheri complessivi * 0.12) - (Proteine complessive * 0.098)
+           Il tutto arrotondato all'all'intero più vicino. Se il risultato è inferiore a 0, imposta il minimo di 0 punti.
+        5. Nel campo "nome" imposta una dicitura sintetica come "Composto di ingredienti a crudo" o un piccolo riassunto degli ingredienti principali (es. "Pasta, pomodoro e olio (a crudo)").
+        6. Nel campo "porzione" inserisci la descrizione di tutti i componenti pesati a crudo con le loro quantità.
+        
+        Rispondi in formato JSON seguendo questo schema esatto in lingua italiana.
+      `;
+    } else {
+      promptText = `
+        Analizza l'alimento o composto culinario "${cibo}" secondo le linee guida degli SmartPoints BLU, ricordando di stimare e basare la precisione dei punti sui corrispondenti pesi A CRUDO (es. se pasta, considerala pasta cruda/secca con rispettivo valore di SmartPoints prima di essere cotta).
+        Determina se appartiene alla lista dei cibi a ZERO PUNTI (ZeroPoint foods) del piano Blu (es. petto di pollo, uova, la maggior parte di frutta e verdura, yogurt greco magro, legumi, merluzzo o pesce naturale, tofu).
+        Se è un cibo a zero punti, allora il totale SmartPoints è 0. Fornisci i valori nutrizionali stimati per una porzione standard adatta a quel cibo a crudo.
+        Se non è un cibo a zero punti (es. avocado, pane, olio, dolci, riso, pasta), stima i suoi valori nutrizionali per una porzione standard a crudo (Calorie, Grassi saturi, Zuccheri, Proteine) e calcola gli SmartPoints usando la formula ufficiale:
+        SmartPoints = (Calorie * 0.0305) + (Grassi saturi * 0.275) + (Zuccheri * 0.12) - (Proteine * 0.098) arrotondato all'intero più vicino (minimo 0).
+
+        Rispondi in formato JSON seguendo questo schema esatto in lingua italiana.
+      `;
+    }
 
     const response = await generateContentWithRetry({
       contents: promptText,
@@ -920,7 +1048,7 @@ app.post("/api/analyze-food", async (req, res) => {
           type: Type.OBJECT,
           properties: {
             nome: { type: Type.STRING, description: "Nome normalizzato dell'alimento in italiano" },
-            porzione: { type: Type.STRING, description: "Porzione standard considerata (es: 100g, 1 cucchiaio, 1 tazza)" },
+            porzione: { type: Type.STRING, description: "Porzione standard o componenti a crudo considerati (es: 100g, 100g pasta cruda + 10g olio)" },
             calorie: { type: Type.INTEGER, description: "Calorie stimate della porzione" },
             grassiSaturi: { type: Type.NUMBER, description: "Grassi saturi stimati in grammi per porzione" },
             zuccheri: { type: Type.NUMBER, description: "Zuccheri stimati in grammi per porzione" },
@@ -951,9 +1079,8 @@ app.post("/api/analyze-food", async (req, res) => {
     const promptTokens = Number(usage.promptTokenCount || usage.promptTokens || 520 + Math.floor(Math.random() * 80));
     const candidatesTokens = Number(usage.candidatesTokenCount || usage.candidatesTokens || 240 + Math.floor(Math.random() * 50));
     const totalTokens = promptTokens + candidatesTokens;
-    const priceInputUSD = (promptTokens / 1_000_000) * 0.075;
-    const priceOutputUSD = (candidatesTokens / 1_000_000) * 0.30;
-    const costEur = Number(((priceInputUSD + priceOutputUSD) * 0.92).toFixed(6));
+    // Ogni 5000 punti (token) dell'utente corrispondono a 2 euro di consumo AI
+    const costEur = Number(((totalTokens / 5000) * 2).toFixed(6));
 
     data.usageReport = {
       promptTokens,
@@ -968,14 +1095,13 @@ app.post("/api/analyze-food", async (req, res) => {
     console.error("Errore analisi cibo (Gemini):", error);
     try {
       console.log("-> Falling back to local food analyzer.");
-      const analysisResult = generateFallbackFoodAnalysis(cibo);
+      const analysisResult = generateFallbackFoodAnalysis(cibo || "", ingredienti);
 
       const promptTokens = 490 + Math.floor(Math.random() * 80);
       const candidatesTokens = 220 + Math.floor(Math.random() * 55);
       const totalTokens = promptTokens + candidatesTokens;
-      const priceInputUSD = (promptTokens / 1_000_000) * 0.075;
-      const priceOutputUSD = (candidatesTokens / 1_000_000) * 0.30;
-      const costEur = Number(((priceInputUSD + priceOutputUSD) * 0.92).toFixed(6));
+      // Ogni 5000 punti (token) dell'utente corrispondono a 2 euro di consumo AI
+      const costEur = Number(((totalTokens / 5000) * 2).toFixed(6));
 
       analysisResult.usageReport = {
         promptTokens,

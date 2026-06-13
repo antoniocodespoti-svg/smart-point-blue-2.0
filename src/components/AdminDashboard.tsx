@@ -12,7 +12,13 @@ import {
   UserCheck, 
   TrendingUp, 
   Trash2, 
-  Info
+  Info,
+  Calendar,
+  History,
+  Gift,
+  PlusCircle,
+  ChevronDown,
+  ChevronUp
 } from "lucide-react";
 import { 
   getLocalUsers, 
@@ -20,6 +26,240 @@ import {
   updateLocalUser, 
   deleteLocalUser 
 } from "../lib/userDb";
+
+export interface PointsRow {
+  id: string;
+  data: string;
+  punti: number; // Will hold standard credits
+  puntiBonus: number; // Will hold bonus credits
+  note: string;
+}
+
+interface UserPointsHistoryPanelProps {
+  user: UserProfile;
+  onUpdateUserCredits: (userId: string, newCredits: number) => void;
+  showFeedbackMsg: (msg: string) => void;
+}
+
+export function UserPointsHistoryPanel({ user, onUpdateUserCredits, showFeedbackMsg }: UserPointsHistoryPanelProps) {
+  const [rows, setRows] = useState<PointsRow[]>([]);
+  const [inputDate, setInputDate] = useState(() => {
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  });
+  const [inputPoints, setInputPoints] = useState<string>("");
+  const [inputBonus, setInputBonus] = useState<string>("");
+  const [inputNote, setInputNote] = useState<string>("Rifornimento manuale");
+
+  // Load rows from localStorage for this user
+  useEffect(() => {
+    const key = `ww_points_history_${user.id}`;
+    const saved = localStorage.getItem(key);
+    if (saved) {
+      try {
+        setRows(JSON.parse(saved));
+      } catch (e) {
+        setRows([]);
+      }
+    } else {
+      setRows([]);
+    }
+  }, [user.id]);
+
+  const saveRows = (newRows: PointsRow[]) => {
+    setRows(newRows);
+    localStorage.setItem(`ww_points_history_${user.id}`, JSON.stringify(newRows));
+  };
+
+  const handleAddRow = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inputDate) return;
+
+    const newRow: PointsRow = {
+      id: Date.now().toString(),
+      data: inputDate,
+      punti: Number(inputPoints) || 0,
+      puntiBonus: Number(inputBonus) || 0,
+      note: inputNote.trim() || "Nessuna nota",
+    };
+
+    const updated = [...rows, newRow];
+    saveRows(updated);
+
+    // Increment user credits by standard points + bonus points
+    const addedCredits = newRow.punti + newRow.puntiBonus;
+    if (addedCredits > 0) {
+      const updatedCredits = Math.max(0, (user.aiCredits ?? 5) + addedCredits);
+      onUpdateUserCredits(user.id, updatedCredits);
+      showFeedbackMsg(`Aggiunti +${addedCredits} crediti a ${user.name}!`);
+    } else {
+      showFeedbackMsg("Riga aggiunta con successo!");
+    }
+
+    // Reset inputs
+    setInputPoints("");
+    setInputBonus("");
+    setInputNote("Rifornimento manuale");
+  };
+
+  const handleDeleteRow = (rowId: string, itemPoints: number, itemBonus: number) => {
+    const filtered = rows.filter(r => r.id !== rowId);
+    saveRows(filtered);
+
+    // If we are deleting a row, reverse the credits safely
+    const removedCredits = itemPoints + itemBonus;
+    if (removedCredits > 0) {
+      const updatedCredits = Math.max(0, (user.aiCredits ?? 5) - removedCredits);
+      onUpdateUserCredits(user.id, updatedCredits);
+    }
+    showFeedbackMsg("Riga rimossa dal registro.");
+  };
+
+  // Calculate totals
+  const totalStandardPoints = rows.reduce((sum, r) => sum + r.punti, 0);
+  const totalBonusPoints = rows.reduce((sum, r) => sum + r.puntiBonus, 0);
+
+  return (
+    <div className="bg-slate-50/70 p-5 rounded-2xl border border-slate-200/50 text-left space-y-4 animate-fade-in w-full">
+      <div className="flex justify-between items-center pb-2 border-b border-slate-200/55">
+        <div className="flex items-center gap-2">
+          <History className="w-4 h-4 text-indigo-500 animate-pulse" />
+          <h4 className="text-xs font-bold text-slate-800">Cronologia di Ricarica Regolamento Crediti</h4>
+        </div>
+        <div className="flex items-center gap-2 text-[10px] text-slate-500 font-bold bg-white px-2.5 py-0.5 rounded-lg border border-slate-250/30">
+          <span>Crediti Correnti: <strong className="text-indigo-600">{user.aiCredits ?? 5}</strong></span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        {/* Form area to add row */}
+        <form onSubmit={handleAddRow} className="lg:col-span-4 bg-white p-4 rounded-xl border border-slate-200/40 space-y-3">
+          <span className="text-[10px] font-black text-slate-500 block uppercase tracking-wider">Aggiungi Nuova Riga</span>
+          
+          <div className="space-y-1">
+            <label className="text-[10px] text-slate-400 font-bold block">Seleziona Data</label>
+            <div className="relative">
+              <Calendar className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 select-none" />
+              <input 
+                type="date"
+                required
+                value={inputDate}
+                onChange={(e) => setInputDate(e.target.value)}
+                className="pl-8 pr-2 py-1 bg-slate-50 border border-slate-200 focus:outline-indigo-505 focus:outline-indigo-500 rounded-lg text-xs w-full"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1">
+              <label className="text-[10px] text-slate-400 font-bold block">Crediti standard</label>
+              <input 
+                type="text"
+                placeholder="0"
+                value={inputPoints}
+                onChange={(e) => setInputPoints(e.target.value)}
+                className="px-2 py-1 bg-slate-50 border border-slate-200 focus:outline-indigo-500 rounded-lg text-xs w-full font-mono text-center font-bold text-emerald-600"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[10px] text-slate-400 font-bold block">Crediti Bonus</label>
+              <input 
+                type="text"
+                placeholder="0"
+                value={inputBonus}
+                onChange={(e) => setInputBonus(e.target.value)}
+                className="px-2 py-1 bg-slate-50 border border-slate-200 focus:outline-indigo-500 rounded-lg text-xs w-full font-mono text-center font-bold text-indigo-600"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-[10px] text-slate-400 font-bold block">Note / Descrizione</label>
+            <input 
+              type="text"
+              placeholder="es. Bonus settimanale, Ricarica"
+              value={inputNote}
+              onChange={(e) => setInputNote(e.target.value)}
+              className="px-2 py-1 bg-slate-50 border border-slate-200 focus:outline-indigo-500 rounded-lg text-xs w-full font-medium"
+            />
+          </div>
+
+          <button
+            type="submit"
+            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-[10px] py-1.5 rounded-lg transition-all"
+          >
+            + Aggiungi Riga Registro
+          </button>
+        </form>
+
+        {/* List of registered rows */}
+        <div className="lg:col-span-8 space-y-2">
+          <span className="text-[10px] font-black text-slate-500 block uppercase tracking-wider">Righe Crediti Registrate nel Registro</span>
+          
+          <div className="bg-white border border-slate-200/40 rounded-xl overflow-hidden min-h-[150px] max-h-[250px] overflow-y-auto">
+            {rows.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-center p-6 text-slate-400 min-h-[140px]">
+                <PlusCircle className="w-5 h-5 text-slate-300 mb-1" />
+                <p className="text-[10px] font-black text-slate-400">Nessun caricamento o riga crediti inserita.</p>
+                <p className="text-[9px] text-slate-400">Inserisci data e crediti per inserire una nuova riga.</p>
+              </div>
+            ) : (
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-slate-50 text-[9px] text-slate-400 uppercase font-black tracking-wider select-none border-b border-slate-100">
+                    <th className="py-2 px-3">Data</th>
+                    <th className="py-2 px-2 text-center">Crediti Standard</th>
+                    <th className="py-2 px-2 text-center">Crediti Bonus</th>
+                    <th className="py-2 px-3">Note / Descrizione</th>
+                    <th className="py-2 px-3 text-center">Rimuovi</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => (
+                    <tr key={r.id} className="hover:bg-slate-50/50 border-b border-slate-50">
+                      <td className="py-2.5 px-3 font-semibold text-slate-700 font-mono text-[10.5px]">{r.data}</td>
+                      <td className="py-2.5 px-2 text-center font-bold text-emerald-600">
+                        {r.punti > 0 ? `+${r.punti} Cr` : '-'}
+                      </td>
+                      <td className="py-2.5 px-2 text-center font-bold text-indigo-600">
+                        {r.puntiBonus > 0 ? `+${r.puntiBonus} Cr` : '-'}
+                      </td>
+                      <td className="py-2.5 px-3 text-slate-500 font-medium">{r.note}</td>
+                      <td className="py-2.5 px-3 text-center">
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteRow(r.id, r.punti, r.puntiBonus)}
+                          className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          {/* Quick Stats Summary */}
+          {rows.length > 0 && (
+            <div className="flex justify-between items-center text-[10px] p-2 bg-slate-50 border border-slate-100/50 rounded-lg text-slate-500 font-bold">
+              <span>Caricamenti totali: <strong className="text-slate-800 font-mono">{rows.length}</strong></span>
+              <div className="flex gap-4">
+                <span>Crediti standard ricaricati: <strong className="text-emerald-600 font-mono">+{totalStandardPoints} Cr</strong></span>
+                <span>Crediti Bonus ricaricati: <strong className="text-indigo-600 font-mono">+{totalBonusPoints} Cr</strong></span>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 interface AdminDashboardProps {
   currentUser: UserProfile;
@@ -30,9 +270,10 @@ export function AdminDashboard({ currentUser, onRefreshCurrentUser }: AdminDashb
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterActiveOnly, setFilterActiveOnly] = useState(false);
-  const [rechargeAmount, setRechargeAmount] = useState<number>(5);
+  const [rechargeAmount, setRechargeAmount] = useState<string>("");
   const [feedback, setFeedback] = useState<string | null>(null);
   const [userToDeleteId, setUserToDeleteId] = useState<string | null>(null);
+  const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
 
   // Load all registered users from local state
   const loadUsers = async () => {
@@ -97,17 +338,40 @@ export function AdminDashboard({ currentUser, onRefreshCurrentUser }: AdminDashb
     showFeedbackMsg("Crediti aggiornati con successo!");
   };
 
+  const handleUpdateUserCredits = (userId: string, newCredits: number) => {
+    const updatedUsers = users.map(u => {
+      if (u.id === userId) {
+        return { ...u, aiCredits: newCredits };
+      }
+      return u;
+    });
+    setUsers(updatedUsers);
+    updateLocalUser(userId, { aiCredits: newCredits });
+
+    // If it is the current logged-in user, sync session
+    if (userId === currentUser.id) {
+      const curUserSaved = localStorage.getItem("ww_current_user");
+      if (curUserSaved) {
+        const parsed = JSON.parse(curUserSaved);
+        parsed.aiCredits = newCredits;
+        localStorage.setItem("ww_current_user", JSON.stringify(parsed));
+        onRefreshCurrentUser();
+      }
+    }
+  };
+
   // Quick action: recharge all users
   const handleRechargeAll = async () => {
+    const parsedAmount = Math.max(0, Number(rechargeAmount) || 5);
     const updatedUsers = users.map(u => ({
       ...u,
-      aiCredits: (u.aiCredits ?? 5) + rechargeAmount
+      aiCredits: (u.aiCredits ?? 5) + parsedAmount
     }));
 
     setUsers(updatedUsers);
 
     for (const u of users) {
-      const newCredits = (u.aiCredits ?? 5) + rechargeAmount;
+      const newCredits = (u.aiCredits ?? 5) + parsedAmount;
       updateLocalUser(u.id, { aiCredits: newCredits });
     }
 
@@ -115,11 +379,14 @@ export function AdminDashboard({ currentUser, onRefreshCurrentUser }: AdminDashb
     const curUserSaved = localStorage.getItem("ww_current_user");
     if (curUserSaved) {
       const parsed = JSON.parse(curUserSaved);
-      parsed.aiCredits = (parsed.aiCredits ?? 5) + rechargeAmount;
+      parsed.aiCredits = (parsed.aiCredits ?? 5) + parsedAmount;
       localStorage.setItem("ww_current_user", JSON.stringify(parsed));
       onRefreshCurrentUser();
     }
-    showFeedbackMsg(`Ricaricati +${rechargeAmount} crediti a TUTTI gli utenti!`);
+    showFeedbackMsg(`Ricaricati +${parsedAmount} crediti a TUTTI gli utenti!`);
+    
+    // Reset input
+    setRechargeAmount("");
   };
 
   // Reset metrics (tokens used and cost) for clean testing
@@ -215,148 +482,66 @@ export function AdminDashboard({ currentUser, onRefreshCurrentUser }: AdminDashb
       {/* Dynamic Action Notification */}
       {feedback && (
         <div className="fixed top-20 right-4 bg-slate-900 border border-indigo-500 text-white font-medium text-xs py-3 px-5 rounded-2xl shadow-xl z-50 flex items-center gap-2 animate-bounce">
-          <Sparkles className="w-4 h-4 text-indigo-400" />
           <span>{feedback}</span>
         </div>
       )}
 
-      {/* Intro Bannner */}
+      {/* Intro Banner */}
       <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-950 text-white rounded-3xl p-6 shadow-xl border border-indigo-900/40 relative overflow-hidden">
         <div className="absolute right-0 top-0 w-64 h-64 bg-indigo-550/10 blur-3.5xl rounded-full translate-x-12 -translate-y-12 select-none pointer-events-none" />
         <div className="relative space-y-2 max-w-2xl text-left">
           <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-500/20 text-indigo-300 rounded-full text-[10px] font-bold uppercase tracking-wider">
-            <UserCheck className="w-3.5 h-3.5" /> Pannello Moderatore Certificato
+            <UserCheck className="w-3.5 h-3.5" /> Pannello Amministrazione Certificato
           </div>
-          <h1 className="text-2xl font-black font-sans tracking-tight">Pannello Amministrazione & Analisi AI</h1>
+          <h1 className="text-2xl font-black font-sans tracking-tight">Pannello Amministrazione</h1>
           <p className="text-xs text-slate-300 leading-relaxed font-sans font-medium">
-            Tieni traccia dell'utilizzo dei token della tua istanza di **Gemini 2.0/3.5**, gestisci le quote di crediti individuali e analizza in modo dettagliato le abitudini alimentari di tutti i tuoi utenti registrati.
+            Gestisci le quote di crediti individuali e analizza in modo dettagliato le abitudini alimentari di tutti i tuoi utenti registrati.
           </p>
         </div>
       </div>
 
-      {/* Metrics Bento Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {/* Card 1: Registered Users */}
-        <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-xs flex items-center gap-4 hover:shadow-md transition">
-          <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
-            <Users className="w-6 h-6" />
-          </div>
-          <div className="text-left">
-            <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider">Utenti Registrati</span>
-            <span className="text-xl font-black text-slate-800">{totalUsers}</span>
-            <span className="block text-[9px] text-slate-400 mt-0.5">Database locale</span>
-          </div>
-        </div>
-
-        {/* Card 2: Total Token Consumption */}
-        <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-xs flex items-center gap-4 hover:shadow-md transition">
-          <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl">
-            <Database className="w-6 h-6" />
-          </div>
-          <div className="text-left font-sans">
-            <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider">Token Utilizzati</span>
-            <span className="text-xl font-black text-slate-800 font-mono">{totalTokens.toLocaleString()}</span>
-            <span className="block text-[9px] text-indigo-500 font-bold mt-0.5">Input & Output Gemini</span>
-          </div>
-        </div>
-
-        {/* Card 3: Actual Costs generated */}
-        <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-xs flex items-center gap-4 hover:shadow-md transition">
-          <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
-            <Euro className="w-6 h-6" />
-          </div>
-          <div className="text-left">
-            <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider">Spesa Stimata API</span>
-            <span className="text-xl font-black text-emerald-600 font-mono">€{totalCost.toFixed(4)}</span>
-            <span className="block text-[9px] text-emerald-500 font-bold mt-0.5">Basato su tariffe reali</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Analysis Graphic Charts (Bento visualizer without dependencies) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        
-        {/* Token consumption and cost distribution visual bar-chart and list (pure high-fidelity custom visualizer) */}
-        <div className="lg:col-span-7 bg-white border border-slate-100 rounded-3xl p-6 shadow-sm space-y-6">
-          <div className="flex justify-between items-center pb-3 border-b border-slate-100">
-            <div className="text-left">
-              <h3 className="text-sm font-bold text-slate-800">Analisi Costi / Consumo per Singolo Account</h3>
-              <p className="text-[10px] text-slate-400">Rapporto visivo del costo generato da ciascun utente sul budget dell'amministratore.</p>
+        {/* Card 1: Registered Users & Quick Info */}
+        <div className="lg:col-span-4 bg-white border border-slate-100 rounded-2xl p-6 shadow-xs flex flex-col justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
+              <Users className="w-6 h-6" />
             </div>
-            <TrendingUp className="w-4 h-4 text-indigo-500" />
+            <div className="text-left">
+              <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider">Utenti Registrati</span>
+              <span className="text-2xl font-black text-slate-800">{totalUsers}</span>
+              <span className="block text-[9px] text-slate-400 mt-0.5">Database locale</span>
+            </div>
           </div>
-
-          <div className="space-y-5">
-            {users.length === 0 ? (
-              <p className="text-xs text-slate-400 text-center py-6">Nessun dato di utilizzo registrato.</p>
-            ) : (
-              users.map((u, i) => {
-                const percentageCost = totalCost > 0 ? ((u.totalCostEur ?? 0) / totalCost) * 100 : 0;
-                return (
-                  <div key={u.id} className="space-y-1.5 text-left">
-                    <div className="flex justify-between items-center text-xs">
-                      <div className="flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: `hsl(${(i * 137.5) % 360}, 65%, 55%)` }} />
-                        <span className="font-extrabold text-slate-705 truncate max-w-[150px]">{u.name}</span>
-                        <span className="text-[9px] text-slate-400 font-mono truncate max-w-[120px]">({u.email})</span>
-                      </div>
-                      <div className="font-mono text-[11px] font-bold text-slate-700 flex gap-2">
-                        <span>{u.totalTokensUsed?.toLocaleString()} Pk</span>
-                        <span className="text-slate-400 font-medium">|</span>
-                        <span className="text-indigo-650 font-extrabold">€{u.totalCostEur?.toFixed(5)}</span>
-                      </div>
-                    </div>
-
-                    {/* Styled ProgressBar */}
-                    <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden flex">
-                      <div 
-                        className="h-full transition-all duration-500 rounded-full" 
-                        style={{ 
-                          width: `${Math.max(3, percentageCost)}%`,
-                          backgroundColor: `hsl(${(i * 137.5) % 360}, 65%, 55%)` 
-                        }}
-                      />
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-
-          {/* Cost legend notes */}
-          <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 space-y-1 text-[10.5px] text-slate-500 leading-normal text-left">
-            <span className="font-bold text-slate-700 block">ℹ Come vengono stimati i costi Gemini API?</span>
-            <ul className="list-disc list-inside space-y-0.5">
-              <li>**Modello di base**: <span className="font-mono text-slate-700">gemini-3.5-flash</span></li>
-              <li>**Input Tariffa**: $0.075 / milione di token (~€0.069)</li>
-              <li>**Output Risposta**: $0.30 / milione di token (~€0.276)</li>
-              <li>Consumando una media di **3,400 token** per menu e **750 token** per alimento, ciascuna operazione ha un costo trascurabile inferiore ad un centesimo di euro (€0.0003 - €0.0009).</li>
-            </ul>
+          <div className="p-4 bg-slate-50 border border-slate-100 rounded-xl flex items-center gap-2 text-slate-400">
+            <Info className="w-4 h-4 text-slate-500 shrink-0" />
+            <p className="text-[9px] leading-tight text-left">
+              Consiglio: per i test di compatibilità, le credenziali dei profili registrati sono salvate interamente in chiaro nel client database (localStorage) del browser in uso.
+            </p>
           </div>
         </div>
 
         {/* Global Admin Tools Quick Panel */}
-        <div className="lg:col-span-5 bg-white border border-slate-100 rounded-3xl p-6 shadow-sm flex flex-col justify-between gap-6">
-          <div className="space-y-4">
-            <div className="pb-3 border-b border-slate-100 text-left">
-              <h3 className="text-sm font-bold text-slate-800 font-sans">Opzioni di Controllo Rapido</h3>
-              <p className="text-[10px] text-slate-400">Ricarica automatica intelligente e pulizia dei log di test.</p>
-            </div>
+        <div className="lg:col-span-8 bg-white border border-slate-100 rounded-3xl p-6 shadow-sm space-y-4">
+          <div className="pb-3 border-b border-slate-100 text-left">
+            <h3 className="text-sm font-bold text-slate-800 font-sans">Opzioni di Controllo Rapido</h3>
+            <p className="text-[10px] text-slate-400">Rifornimento dei crediti di sistema e ripristino dei database.</p>
+          </div>
 
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Quick Recharge Card */}
             <div className="bg-indigo-50/50 border border-indigo-100/50 rounded-2xl p-4 text-left space-y-3">
               <span className="text-[11px] font-bold text-indigo-950 block">Rifornimento Crediti Multi-User</span>
               <p className="text-[10px] text-indigo-700 leading-relaxed font-sans font-medium">
-                Scegli quanti crediti AI aggiungere a tutti gli utenti del sistema contemporaneamente con un solo clic.
+                Scegli quanti crediti aggiungere a tutti gli utenti del sistema contemporaneamente con un solo clic.
               </p>
               
               <div className="flex gap-2 items-center">
                 <input 
-                  type="number"
-                  min="1"
-                  max="50"
+                  type="text"
+                  placeholder="5"
                   value={rechargeAmount}
-                  onChange={(e) => setRechargeAmount(Math.max(1, parseInt(e.target.value) || 1))}
+                  onChange={(e) => setRechargeAmount(e.target.value)}
                   className="w-16 text-center text-xs font-black font-mono border border-indigo-200/60 rounded-xl px-2 py-1.5 focus:outline-indigo-500 bg-white"
                 />
                 <button
@@ -364,26 +549,9 @@ export function AdminDashboard({ currentUser, onRefreshCurrentUser }: AdminDashb
                   onClick={handleRechargeAll}
                   className="flex-grow bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] py-1.5 px-3 rounded-xl transition shadow-xs hover:scale-[1.01] flex items-center justify-center gap-1 cursor-pointer"
                 >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  Ricarica Tutti di +{rechargeAmount}
+                  Ricarica Tutti di +{rechargeAmount || 5}
                 </button>
               </div>
-            </div>
-
-            {/* Emergency resetting */}
-            <div className="bg-rose-50/50 border border-rose-100/40 rounded-2xl p-4 text-left space-y-3">
-              <span className="text-[11px] font-bold text-rose-950 block">Azzera Statistiche Uso</span>
-              <p className="text-[10px] text-rose-700 leading-relaxed font-sans font-medium">
-                Pulisce a zero il contatore dei token consumati e la stima cumulativa del costo in euro per tutti i profili registrati.
-              </p>
-              <button
-                type="button"
-                onClick={handleResetMetrics}
-                className="bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-[11px] w-full py-1.5 px-3 rounded-xl transition shadow-xs flex items-center justify-center gap-1 cursor-pointer"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                Azzera Log Consumi
-              </button>
             </div>
 
             {/* Reset All Non-Admin Accounts */}
@@ -402,13 +570,6 @@ export function AdminDashboard({ currentUser, onRefreshCurrentUser }: AdminDashb
               </button>
             </div>
           </div>
-
-          <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl flex items-center gap-2 text-slate-400">
-            <Info className="w-4 h-4 text-slate-500 shrink-0" />
-            <p className="text-[9px] leading-tight text-left">
-              Consiglio: per i test di compatibilità, le credenziali sono salvate interamente in chiaro nel client database (localStorage) del browser in uso.
-            </p>
-          </div>
         </div>
 
       </div>
@@ -420,7 +581,7 @@ export function AdminDashboard({ currentUser, onRefreshCurrentUser }: AdminDashb
         <div className="p-5 border-b border-slate-100 flex flex-wrap justify-between items-center gap-4">
           <div className="space-y-1">
             <h3 className="text-sm font-black text-slate-800">Elenco Completo degli Account Registrati</h3>
-            <p className="text-[10px] text-slate-400 font-sans">Elenco degli utenti registrati e gestione dei crediti AI.</p>
+            <p className="text-[10px] text-slate-400 font-sans">Elenco degli utenti registrati e gestione dei crediti di elaborazione.</p>
           </div>
 
           {/* Search bar & filter */}
@@ -443,7 +604,7 @@ export function AdminDashboard({ currentUser, onRefreshCurrentUser }: AdminDashb
                 onChange={(e) => setFilterActiveOnly(e.target.checked)}
                 className="w-3.5 h-3.5 rounded border-slate-350 accent-indigo-600"
               />
-              <span>Solo attivi (AI)</span>
+              <span>Solo attivi</span>
             </label>
           </div>
         </div>
@@ -454,18 +615,17 @@ export function AdminDashboard({ currentUser, onRefreshCurrentUser }: AdminDashb
             <thead>
               <tr className="bg-slate-50/60 uppercase text-[9px] font-black text-slate-400 tracking-wider border-b border-slate-100 select-none">
                 <th className="py-3.5 px-5">Utente / Profilo</th>
-                <th className="py-3.5 px-3">Dati Biometrici</th>
-                <th className="py-3.5 px-3">Budget SP</th>
-                <th className="py-3.5 px-3 text-center">AI Crediti Quota</th>
-                <th className="py-3.5 px-3 text-right">Analisi Token</th>
-                <th className="py-3.5 px-3 text-right">Spesa API</th>
+                <th className="py-3.5 px-3 text-center">Punti Standard Caricati</th>
+                <th className="py-3.5 px-3 text-center">Bonus Convertito (€)</th>
+                <th className="py-3.5 px-3 text-center">Consumo (€)</th>
+                <th className="py-3.5 px-3 text-center">Quota Crediti</th>
                 <th className="py-3.5 px-5 text-center">Azioni Staff</th>
               </tr>
             </thead>
             <tbody>
               {filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-8 text-center text-xs text-slate-400 font-medium">Nessun utente trovato con i parametri correnti.</td>
+                  <td colSpan={6} className="py-8 text-center text-xs text-slate-400 font-medium">Nessun utente trovato con i parametri correnti.</td>
                 </tr>
               ) : (
                 filteredUsers.map((u) => {
@@ -475,116 +635,143 @@ export function AdminDashboard({ currentUser, onRefreshCurrentUser }: AdminDashb
                     u.name.toLowerCase() === "bruna65b" ||
                     u.name.toLowerCase() === "admin";
 
+                  // Calcola i punti caricati e bonus ricarica dal localStorage per ogni utente
+                  const pointsHistoryKey = `ww_points_history_${u.id}`;
+                  const savedHistory = localStorage.getItem(pointsHistoryKey);
+                  let totalStandardPoints = 0;
+                  let totalBonusPoints = 0;
+                  if (savedHistory) {
+                    try {
+                      const rows = JSON.parse(savedHistory);
+                      if (Array.isArray(rows)) {
+                        rows.forEach((r: any) => {
+                          totalStandardPoints += Number(r.punti) || 0;
+                          totalBonusPoints += Number(r.puntiBonus) || 0;
+                        });
+                      }
+                    } catch (e) {
+                      // ignore parse errors
+                    }
+                  }
+                  const bonusInEur = totalBonusPoints / 1000;
+                  const userCost = u.totalCostEur ?? 0;
+
                   return (
-                    <tr 
-                      key={u.id}
-                      className="border-b border-slate-100 bg-white transition hover:bg-slate-50/20"
-                    >
-                      {/* Name and email details */}
-                      <td className="py-4 px-5">
-                        <div className="flex items-center gap-3">
-                          <span className="p-2 bg-indigo-50 text-indigo-655 text-indigo-600 rounded-xl font-bold text-xs select-none">
-                            {u.name.substring(0, 2).toUpperCase()}
-                          </span>
-                          <div>
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-bold text-xs text-slate-800">{u.name}</span>
-                              {isPowerUser && (
-                                <span className="bg-indigo-600 text-white font-extrabold text-[8px] px-1.5 py-0.5 rounded tracking-wide uppercase select-none">
-                                  Amministratore
-                                </span>
+                    <React.Fragment key={u.id}>
+                      <tr 
+                        onClick={() => setExpandedUserId(expandedUserId === u.id ? null : u.id)}
+                        className={`border-b border-slate-100 bg-white transition hover:bg-slate-50/40 cursor-pointer select-none ${
+                          expandedUserId === u.id ? "bg-slate-50/30" : ""
+                        }`}
+                      >
+                        {/* Name and email details with Expand Chevron */}
+                        <td className="py-4 px-5">
+                          <div className="flex items-center gap-3">
+                            <div className="text-slate-400 shrink-0">
+                              {expandedUserId === u.id ? (
+                                <ChevronUp className="w-4 h-4" />
+                              ) : (
+                                <ChevronDown className="w-4 h-4" />
                               )}
                             </div>
-                            <span className="block text-[10px] text-slate-400 font-medium">{u.email}</span>
-                          </div>
-                        </div>
-                      </td>
-
-                      {/* Weight, height, age info */}
-                      <td className="py-4 px-3 text-xs text-slate-500 font-medium">
-                        <span className="block font-bold text-slate-700">Età: {u.age} anni</span>
-                        <span className="block text-[10px] text-slate-400 capitalize">{u.gender === 'male' ? 'Uomo' : 'Donna'} • {u.weight} Kg</span>
-                      </td>
-
-                      {/* SP points count */}
-                      <td className="py-4 px-3 text-xs font-bold text-slate-800">
-                        <span className="bg-amber-100/70 text-amber-900 border border-amber-200/50 px-2 py-0.5 rounded-lg">
-                          {u.budgetPoints || 23} SP
-                        </span>
-                      </td>
-
-                      {/* Credits adjustments */}
-                      <td className="py-4 px-3 text-center" onClick={(e) => e.stopPropagation()}>
-                        <div className="inline-flex items-center gap-2 bg-slate-100 p-1 rounded-xl border border-slate-200/30">
-                          <button
-                            onClick={() => handleUpdateCredits(u.id, -1)}
-                            className="p-1 hover:bg-rose-100 hover:text-rose-600 rounded text-slate-500 cursor-pointer self-center transition-colors"
-                            title="Togli un credito"
-                            disabled={creditsLeft <= 0}
-                          >
-                            <Minus className="w-3 h-3" />
-                          </button>
-                          <span className={`text-[11.5px] font-black font-sans min-w-[34px] tracking-tight block ${
-                            creditsLeft === 0 ? "text-rose-650 animate-pulse font-black" : "text-slate-805 text-slate-800"
-                          }`}>
-                            {creditsLeft}/5
-                          </span>
-                          <button
-                            onClick={() => handleUpdateCredits(u.id, 1)}
-                            className="p-1 hover:bg-emerald-100 hover:text-emerald-600 rounded text-slate-500 cursor-pointer self-center transition-colors"
-                            title="Aggiungi un credito"
-                          >
-                            <Plus className="w-3 h-3" />
-                          </button>
-                        </div>
-                      </td>
-
-                      {/* Detailed numeric reports */}
-                      <td className="py-4 px-3 text-right font-mono text-[11px] text-slate-600 font-bold">
-                        {(u.totalTokensUsed ?? 0).toLocaleString()}
-                      </td>
-
-                      <td className="py-4 px-3 text-right font-mono text-xs font-black text-indigo-650">
-                        €{(u.totalCostEur ?? 0).toFixed(6)}
-                      </td>
-
-                      {/* Admin actions block */}
-                      <td className="py-4 px-5 text-center" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex gap-2 justify-center items-center">
-                          {userToDeleteId === u.id ? (
-                            <div className="flex gap-1 items-center">
-                              <button
-                                onClick={() => handleDeleteUser(u.id, u.email)}
-                                className="px-2.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-black rounded-lg cursor-pointer transition shadow-xs whitespace-nowrap"
-                              >
-                                Sì, elimina
-                              </button>
-                              <button
-                                onClick={() => setUserToDeleteId(null)}
-                                className="px-2 py-1.5 bg-slate-205 bg-slate-200 hover:bg-slate-300 text-slate-700 text-[10px] font-black rounded-lg cursor-pointer transition"
-                              >
-                                Annulla
-                              </button>
+                            <span className="p-2 bg-indigo-50 text-indigo-600 rounded-xl font-bold text-xs select-none">
+                              {u.name.substring(0, 2).toUpperCase()}
+                            </span>
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-bold text-xs text-slate-800">{u.name}</span>
+                                {isPowerUser && (
+                                  <span className="bg-indigo-600 text-white font-extrabold text-[8px] px-1.5 py-0.5 rounded tracking-wide uppercase select-none">
+                                    Amministratore
+                                  </span>
+                                )}
+                              </div>
+                              <span className="block text-[10px] text-slate-400 font-medium">{u.email}</span>
                             </div>
-                          ) : (
-                            <button
-                              onClick={() => {
-                                if (u.id === currentUser.id) {
-                                  showFeedbackMsg("Errore: Non puoi eliminare te stesso!");
-                                } else {
-                                  setUserToDeleteId(u.id);
-                                }
-                              }}
-                              className="p-1.5 bg-slate-50 hover:bg-rose-50 border border-slate-100 hover:border-rose-150 text-slate-400 hover:text-rose-600 rounded-lg cursor-pointer transition flex items-center justify-center"
-                              title="Elimina account permanente"
-                              disabled={u.id === currentUser.id}
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
+                          </div>
+                        </td>
+
+                        {/* Punti Standard Caricati */}
+                        <td className="py-4 px-3 text-center">
+                          <span className="font-mono text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-md">
+                            {totalStandardPoints}
+                          </span>
+                        </td>
+
+                        {/* Bonus Ricarica Convertito in Euro (1000 Pt = 1€) */}
+                        <td className="py-4 px-3 text-center">
+                          <span className="font-mono text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md">
+                            €{bonusInEur.toFixed(2)}
+                          </span>
+                        </td>
+
+                        {/* Consumo Realizzato (€) */}
+                        <td className="py-4 px-3 text-center">
+                          <span className="font-mono text-xs font-bold text-slate-700 bg-slate-100 px-2 py-1 rounded-md">
+                            €{userCost.toFixed(5)}
+                          </span>
+                        </td>
+
+                        {/* Credits display - without plus and minus buttons */}
+                        <td className="py-4 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                          <span className={`font-mono text-xs font-black px-2.5 py-1 rounded-md ${
+                            creditsLeft === 0 ? "text-rose-600 bg-rose-50 animate-pulse" : "text-indigo-600 bg-indigo-50/70"
+                          }`}>
+                            {creditsLeft}
+                          </span>
+                        </td>
+
+                        {/* Admin actions block */}
+                        <td className="py-4 px-5 text-center" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex gap-2 justify-center items-center font-sans">
+                            {userToDeleteId === u.id ? (
+                                <div className="flex gap-1 items-center">
+                                  <button
+                                    onClick={() => handleDeleteUser(u.id, u.email)}
+                                    className="px-2.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-black rounded-lg cursor-pointer transition shadow-xs whitespace-nowrap"
+                                  >
+                                    Sì, elimina
+                                  </button>
+                                  <button
+                                    onClick={() => setUserToDeleteId(null)}
+                                    className="px-2 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 text-[10px] font-black rounded-lg cursor-pointer transition"
+                                  >
+                                    Annulla
+                                  </button>
+                                </div>
+                            ) : (
+                              <button
+                                onClick={() => {
+                                  if (u.id === currentUser.id) {
+                                    showFeedbackMsg("Errore: Non puoi eliminare te stesso!");
+                                  } else {
+                                    setUserToDeleteId(u.id);
+                                  }
+                                }}
+                                className="p-1.5 bg-slate-50 hover:bg-rose-50 border border-slate-100 hover:border-rose-150 text-slate-400 hover:text-rose-600 rounded-lg cursor-pointer transition flex items-center justify-center"
+                                title="Elimina account permanente"
+                                disabled={u.id === currentUser.id}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+
+                      {/* Expended detail logs row */}
+                      {expandedUserId === u.id && (
+                        <tr className="bg-slate-50/30">
+                          <td colSpan={6} className="p-4 sm:p-6 border-b border-slate-200/50 bg-slate-50/20">
+                            <UserPointsHistoryPanel 
+                              user={u} 
+                              onUpdateUserCredits={handleUpdateUserCredits}
+                              showFeedbackMsg={showFeedbackMsg}
+                            />
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
                   );
                 })
               )}

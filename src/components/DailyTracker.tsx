@@ -458,7 +458,7 @@ export function DailyTracker({
           </div>
         </div>
 
-        {/* Calculate with AI Food Analyzer */}
+        {/* Calculate with Food Analyzer */}
         <FoodAnalyzer 
           onAddFood={onAddCustomFood}
           currentUser={currentUser}
@@ -470,7 +470,7 @@ export function DailyTracker({
         <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm space-y-5">
           <div className="flex justify-between items-center pb-3 border-b border-slate-100">
             <div>
-              <h3 className="font-bold text-slate-800 text-sm">Registro Pasti di Oggi</h3>
+              <h3 className="font-bold text-slate-805 text-sm">Registro Pasti di Oggi</h3>
               <p className="text-[10px] text-slate-400">Elenco dei cibi inseriti per la giornata odierna</p>
             </div>
             
@@ -488,7 +488,7 @@ export function DailyTracker({
             <div className="text-center py-12 flex flex-col items-center justify-center">
               <Utensils className="w-12 h-12 text-slate-200 stroke-[1.2] mb-2" />
               <p className="text-slate-400 text-xs">Il tuo diario alimentare è ancora vuoto.</p>
-              <p className="text-slate-400 text-[10px] mt-0.5">Usa i bottoni di log rapido, calcola con AI o inserisci manualmente!</p>
+              <p className="text-slate-400 text-[10px] mt-0.5">Usa i bottoni di log rapido, calcola punti o inserisci manualmente!</p>
             </div>
           ) : (
             <div className="divide-y divide-slate-100">

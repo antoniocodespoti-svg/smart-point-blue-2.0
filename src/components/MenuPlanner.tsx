@@ -142,7 +142,7 @@ export function MenuPlanner({
     // Quota Counter check
     const credits = currentUser?.aiCredits ?? 5;
     if (credits <= 0) {
-      setError("Hai terminato i tuoi crediti per l'AI! Clicca sull'icona Ricarica (🔁) in alto a destra per averne altri 5 gratuiti.");
+      setError("Hai terminato i tuoi crediti disponibili! Contatta l'amministratore per effettuare una ricarica.");
       return;
     }
 
@@ -191,7 +191,7 @@ export function MenuPlanner({
       }
     } catch (err: any) {
       console.error(err);
-      setError(err.message || "Qualcosa è andato storto nella connessione con l'AI. Riprova più tardi.");
+      setError(err.message || "Qualcosa è andato storto nella connessione. Riprova più tardi.");
     } finally {
       setLoading(false);
     }
@@ -354,8 +354,8 @@ export function MenuPlanner({
               </>
             ) : (
               <>
-                <Sparkles className="w-4 h-4 text-teal-200" />
-                 <span>Genera Menu Dietetico Blu con AI</span>
+                <ChefHat className="w-4 h-4 text-teal-200" />
+                 <span>Genera Menu Dietetico Blu</span>
               </>
             )}
           </button>
@@ -389,7 +389,7 @@ export function MenuPlanner({
               <div className="flex items-center gap-2">
                 <h3 className="font-bold text-slate-800 text-lg">Menu SmartPoints Blu Generato</h3>
                 <span className="bg-teal-50 text-teal-700 text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-teal-100">
-                  Elaborato dall'IA
+                  Generato automaticamente
                 </span>
               </div>
               <p className="text-xs text-slate-500">
@@ -437,7 +437,7 @@ export function MenuPlanner({
               <div className="bg-slate-50 border border-slate-100 rounded-3xl p-5 space-y-3">
                 <div className="flex items-center gap-2 text-slate-800">
                   <Info className="w-4 h-4 text-blue-600" />
-                  <h4 className="font-bold text-xs">Consigli dell'AI sul Piano Blu</h4>
+                  <h4 className="font-bold text-xs">Consigli sul Piano Blu</h4>
                 </div>
                 <div className="space-y-1.5">
                   {menuPlan.consigliNutrizionali.map((consiglio, idx) => (
@@ -687,45 +687,7 @@ export function MenuPlanner({
             </div>
           )}
 
-          {/* AI Token Billing & Cost Breakdown Panel */}
-          {lastUsage && (
-            <div className="bg-slate-900 border border-slate-800 text-slate-100 rounded-3xl p-6 shadow-xl flex flex-col md:flex-row justify-between items-center gap-6 mt-4 print:hidden animate-fade-in">
-              <div className="space-y-1 text-left">
-                <div className="flex items-center gap-2">
-                  <div className="p-1.5 bg-indigo-500/20 text-indigo-400 rounded-xl">
-                    <Sparkles className="w-4 h-4 animate-pulse" />
-                  </div>
-                  <h4 className="font-bold text-sm text-white">Breakdown Consumo Gemini AI</h4>
-                </div>
-                <p className="text-[11px] text-slate-400 leading-normal max-w-lg">
-                  Questo menu di {formData.giorni} giorno/i è stato formulato basandosi sulla nostra lista di cibi a zero punti. Ecco i token reali e i costi Gemini API calcolati.
-                </p>
-                {lastUsage.isSimulated && (
-                  <span className="inline-block bg-teal-500/10 text-teal-400 border border-teal-500/20 text-[9px] font-semibold px-2 py-0.5 rounded-md mt-1">
-                    ✔ Simulazione locale attiva (Mock Key o API offline)
-                  </span>
-                )}
-              </div>
 
-              <div className="flex flex-wrap gap-4 items-center justify-end shrink-0 select-none">
-                <div className="bg-slate-800/60 border border-slate-700/50 p-2.5 rounded-xl min-w-[100px] text-center">
-                  <span className="block text-[8px] uppercase font-bold text-slate-400 tracking-wider">Input Prompt</span>
-                  <span className="text-xs font-bold font-mono text-white mt-0.5 block">{lastUsage.promptTokens.toLocaleString()}</span>
-                  <span className="text-[8px] text-slate-500 font-medium block mt-0.5">token inviati</span>
-                </div>
-                <div className="bg-slate-800/60 border border-slate-700/50 p-2.5 rounded-xl min-w-[100px] text-center">
-                  <span className="block text-[8px] uppercase font-bold text-slate-400 tracking-wider">Output Risposta</span>
-                  <span className="text-xs font-bold font-mono text-white mt-0.5 block">{lastUsage.candidatesTokens.toLocaleString()}</span>
-                  <span className="text-[8px] text-slate-500 font-medium block mt-0.5">token generati</span>
-                </div>
-                <div className="bg-gradient-to-tr from-indigo-950 to-slate-900 border border-indigo-500/25 p-3 rounded-xl min-w-[125px] text-center md:text-right">
-                  <span className="block text-[8px] uppercase font-bold text-indigo-300 tracking-wider">Costo Equivalente</span>
-                  <span className="text-sm font-black font-mono text-indigo-400 mt-0.5 block">€{lastUsage.costEur.toFixed(5)}</span>
-                  <span className="text-[8px] text-indigo-350 font-semibold block mt-0.5">tariffe ufficiali</span>
-                </div>
-              </div>
-            </div>
-          )}
 
         </div>
       )}

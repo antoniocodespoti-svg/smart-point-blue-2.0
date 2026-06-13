@@ -158,11 +158,14 @@ export default function App() {
 
    const handleUpdateAiUsage = async (tokens: number, cost: number) => {
     if (!currentUser) return;
+    const newTokens = (currentUser.totalTokensUsed ?? 0) + tokens;
+    // Ogni 5000 punti (token) dell'utente corrispondono a 2 euro di consumo AI
+    const newCost = parseFloat(((newTokens / 5000) * 2).toFixed(6));
     const updated: UserProfile = {
       ...currentUser,
       aiCredits: Math.max(0, (currentUser.aiCredits ?? 5) - 1),
-      totalTokensUsed: (currentUser.totalTokensUsed ?? 0) + tokens,
-      totalCostEur: parseFloat(((currentUser.totalCostEur ?? 0) + cost).toFixed(6))
+      totalTokensUsed: newTokens,
+      totalCostEur: newCost
     };
     
     setCurrentUser(updated);
@@ -253,8 +256,8 @@ export default function App() {
                   : "text-slate-600 hover:text-slate-800"
               }`}
             >
-              <Sparkles className="w-4 h-4" />
-              Menu AI
+              <BookOpen className="w-4 h-4" />
+              Pianificatore
             </button>
             <button
               onClick={() => setActiveTab("tracker")}
@@ -313,12 +316,12 @@ export default function App() {
               </p>
             </div>
 
-            {/* AI Control & Quota Widget in upper bar */}
+            {/* Quota Widget in upper bar */}
             <div className="hidden sm:flex items-center gap-2 bg-indigo-500/10 border border-indigo-600/10 px-2.5 py-1.5 rounded-2xl select-none">
               <RefreshCw className="w-3.5 h-3.5 text-indigo-600 animate-spin" style={{ animationDuration: "12s" }} />
               <div className="text-left leading-none">
                 <span className="text-[9.5px] font-black text-slate-800 block">
-                  AI Crediti: <span className={currentUser.aiCredits === 0 ? "text-red-650 font-black animate-pulse" : "text-indigo-650 font-black"}>{currentUser.aiCredits ?? 5}</span>/5
+                  Crediti: <span className={currentUser.aiCredits === 0 ? "text-red-600 font-black animate-pulse" : "text-indigo-600 font-black"}>{currentUser.aiCredits ?? 5}</span>
                 </span>
                 {currentUser.totalCostEur !== undefined && currentUser.totalCostEur > 0 ? (
                   <span className="text-[8px] text-slate-500 font-bold block mt-0.5 whitespace-nowrap">
@@ -330,13 +333,6 @@ export default function App() {
                   </span>
                 )}
               </div>
-              <button 
-                onClick={handleRechargeCredits}
-                className="p-1.5 bg-white hover:bg-slate-50 border border-slate-200 hover:border-indigo-150 text-indigo-600 rounded-lg transition ml-1 cursor-pointer flex items-center justify-center shadow-xs hover:scale-[1.03]"
-                title="Ricarica 5 Crediti AI"
-              >
-                <RefreshCw className="w-2.5 h-2.5" />
-              </button>
             </div>
             
             <div className="hidden sm:flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 bg-slate-100/80 rounded-2xl border border-slate-200/40">
@@ -386,9 +382,28 @@ export default function App() {
         <div className="space-y-8">
           {activeTab === "planner" && (
             <div className="space-y-8 animate-fade-in">
-              <div className="space-y-1">
+              {/* Credit status panel with filling bar - aligned strictly to the left, showing credits as simple integer */}
+              <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-2xs w-full max-w-sm text-left space-y-2.5 shrink-0">
+                <div className="flex justify-between items-center text-xs font-bold text-slate-700">
+                  <span className="flex items-center gap-1">
+                    Crediti disponibili
+                  </span>
+                  <span className="font-mono text-indigo-700 font-extrabold text-sm">{currentUser?.aiCredits ?? 0}</span>
+                </div>
+                <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                  <div 
+                    className="bg-indigo-600 h-full rounded-full transition-all duration-350"
+                    style={{ width: `${Math.min(100, ((currentUser?.aiCredits ?? 0) / 5) * 100)}%` }}
+                  />
+                </div>
+                <div className="text-[10.5px] pt-1.5 border-t border-slate-50 text-slate-400">
+                  Genera ricette o compila menu
+                </div>
+              </div>
+
+              <div className="space-y-1 text-left">
                 <h2 className="text-xl font-bold font-sans text-slate-800">Crea il tuo piano alimentare settimanale</h2>
-                <p className="text-xs text-slate-500">L'Intelligenza Artificiale compilerà piatti sani, facili e allineati al budget del piano Blu.</p>
+                <p className="text-xs text-slate-500">L'app compilerà piatti sani, facili e allineati al budget del piano Blu.</p>
               </div>
               <MenuPlanner
                 defaultBudget={budget}
@@ -512,7 +527,7 @@ export default function App() {
              <span>Pianificatore Menu SmartPoints Blu</span>
           </div>
           <div className="text-[10px] text-slate-400">
-            © {new Date().getFullYear()} Blu Menu Planner • Basato su cibi sani & AI Gemini
+            © {new Date().getFullYear()} Blu Menu Planner • Basato su cibi sani & calcolo bilanciato
           </div>
         </div>
       </footer>
@@ -717,8 +732,8 @@ export default function App() {
             activeTab === "planner" ? "text-indigo-600 font-extrabold" : "text-slate-400 font-medium"
           }`}
         >
-          <Sparkles className="w-5 h-5" />
-          <span className="text-[9px]">Menu AI</span>
+          <BookOpen className="w-5 h-5" />
+          <span className="text-[9px]">Pianificatore</span>
         </button>
         <button
           onClick={() => setActiveTab("tracker")}

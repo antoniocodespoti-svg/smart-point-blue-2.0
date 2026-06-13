@@ -192,7 +192,7 @@ export function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
             SmartPoints <span className="text-blue-600">Blu</span>
           </h1>
           <p className="text-xs text-slate-500 font-medium max-w-sm mt-1">
-            Il pianificatore di dieta intelligente personalizzato con Intelligenza Artificiale
+            Il pianificatore di dieta intelligente e personalizzato sul piano SmartPoints Blu
           </p>
         </div>
       </div>

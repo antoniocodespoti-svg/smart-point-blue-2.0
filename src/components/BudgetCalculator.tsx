@@ -481,7 +481,7 @@ export function BudgetCalculator({
               <div className="bg-rose-50 border border-rose-200 p-4 rounded-2xl md:max-w-md space-y-3">
                 <span className="block text-xs font-black text-rose-800 text-left">⚠️ CONFERMA ELIMINAZIONE ACCOUNT</span>
                 <p className="text-[11px] text-rose-700 font-semibold text-left leading-normal">
-                  Sei assolutamente sicuro? Questa azione è irreversibile ed eliminerà per sempre tutti i tuoi dati, i crediti AI e il diario dal browser.
+                  Sei assolutamente sicuro? Questa azione è irreversibile ed eliminerà per sempre tutti i tuoi dati, i crediti e il diario dal browser.
                 </p>
                 <div className="flex gap-2">
                   <button
