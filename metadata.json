@@ -1,0 +1,6 @@
+{
+  "name": "SmartPoints Blu Diet & Menu Planner",
+  "description": "Calcolatore e pianificatore di menu alimentari basato sulla dieta SmartPoints Blu e l'AI di Gemini.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,67 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global safety net - default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Authentication and verification helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isSimulatedUser(userId) {
+      return userId.startsWith("simp") || userId.startsWith("google-");
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == "demo@smartpoints.it" ||
+        request.auth.token.email == "bruna65b@gmail.com" ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.email == "bruna65b@gmail.com")
+      );
+    }
+
+    // Validation helper for UserProfile objects
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['id', 'name', 'email', 'budgetPoints'])
+        && data.id is string
+        && data.id.size() <= 128
+        && data.name is string
+        && data.name.size() <= 128
+        && data.email is string
+        && data.email.size() <= 256
+        && data.budgetPoints is int;
+    }
+
+    // Validation helper for Username index objects
+    function isValidUsernameDoc(data) {
+      return data.keys().hasAll(['name', 'userId', 'email'])
+        && data.name is string
+        && data.name.size() <= 128
+        && data.userId is string
+        && data.userId.size() <= 128
+        && data.email is string
+        && data.email.size() <= 256;
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin() || isSimulatedUser(userId);
+      allow create: if (isOwner(userId) || isSimulatedUser(userId)) && isValidUserProfile(request.resource.data) && request.resource.data.id == userId;
+      allow update: if (isOwner(userId) || isAdmin() || isSimulatedUser(userId)) && isValidUserProfile(request.resource.data) && request.resource.data.id == userId;
+      allow delete: if isOwner(userId) || isAdmin() || isSimulatedUser(userId);
+    }
+
+    match /usernames/{usernameLower} {
+      allow read: if true;
+      allow create, update: if isValidUsernameDoc(request.resource.data);
+      allow delete: if isAdmin();
+    }
+  }
+}

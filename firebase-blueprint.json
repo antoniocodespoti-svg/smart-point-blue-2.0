@@ -1,0 +1,31 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile with biometrics and application settings",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "budgetPoints": { "type": "integer" },
+        "gender": { "type": "string" },
+        "age": { "type": "integer" },
+        "weight": { "type": "number" },
+        "height": { "type": "number" },
+        "activityLevel": { "type": "string" },
+        "weightGoal": { "type": "string" },
+        "aiCredits": { "type": "integer" },
+        "totalTokensUsed": { "type": "integer" },
+        "totalCostEur": { "type": "number" }
+      },
+      "required": ["id", "name", "email", "budgetPoints"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User specific settings and biographical records"
+    }
+  }
+}
