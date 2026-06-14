@@ -1,33 +1,33 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Global safety net - default deny
-    match /{document=**} {
-      allow read, write: if false;
-    }
-
-    // Allow read/write for all users under security validation since they use password-based authentication inside the app
+    // Consenti l'accesso completo agli utenti e alle relative sottocollezioni
     match /users/{userId} {
-      allow read, write: if true;
-    }
+      allow read, write, get, list: if true;
 
-    // Tracked foods subcollection rules
-    match /users/{userId}/tracked_foods/{foodId} {
-      allow read, write: if true;
-    }
+      // Regole per la sottocollezione dei cibi tracciati
+      match /tracked_foods/{foodId} {
+        allow read, write, get, list: if true;
+      }
 
-    // Points history subcollection rules
-    match /users/{userId}/points_history/{historyId} {
-      allow read, write: if true;
+      // Regole per la sottocollezione della cronologia dei punti
+      match /points_history/{historyId} {
+        allow read, write, get, list: if true;
+      }
     }
 
     match /usernames/{usernameLower} {
-      allow read, write: if true;
+      allow read, write, get, list: if true;
     }
 
-    // Allow connection testing document read/write
+    // Consenti lettura/scrittura per il documento di test della connessione
     match /test/{docId} {
-      allow read, write: if true;
+      allow read, write, get, list: if true;
+    }
+
+    // Fallback di default - nega tutto il resto
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
