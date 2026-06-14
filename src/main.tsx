@@ -3,18 +3,13 @@ import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 
-// Global error filtering to suppress benign browser extension / MetaMask errors in iframe sandbox
+// Global error filtering to suppress benign browser extension errors in iframe sandbox
 if (typeof window !== "undefined") {
   const isExtensionError = (text: string) => {
     const low = text.toLowerCase();
     return (
-      low.includes("metamask") || 
-      low.includes("ethereum") || 
-      low.includes("wallet") || 
-      low.includes("rpc") ||
       low.includes("extension") ||
-      low.includes("crypto") ||
-      low.includes("web3")
+      low.includes("chrome-extension")
     );
   };
 
@@ -37,7 +32,7 @@ if (typeof window !== "undefined") {
     }
   });
 
-  // Intercept console.error to filter out MetaMask/extension error noise shown in the AI Studio interface
+  // Intercept console.error to filter out extension error noise shown in the AI Studio interface
   const originalConsoleError = console.error;
   console.error = function (...args: any[]) {
     const errorStr = args.map(arg => {

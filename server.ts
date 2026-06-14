@@ -714,24 +714,30 @@ async function generateContentWithRetry(params: {
   contents: any;
   config?: any;
 }): Promise<any> {
-  const modelsToTry = ["gemini-3.5-flash", "gemini-flash-latest"];
+  const modelsToTry = ["gemini-2.5-flash", "gemini-3.5-flash", "gemini-flash-latest"];
   let lastError: any = null;
 
   for (const modelName of modelsToTry) {
-    try {
-      console.log(`Calling Gemini API using model: ${modelName}`);
-      const response = await ai.models.generateContent({
-        model: modelName,
-        contents: params.contents,
-        config: params.config,
-      });
-      return response;
-    } catch (err: any) {
-      lastError = err;
-      console.warn(`Failed to call Gemini using ${modelName}:`, err.message || err);
-      // Wait a short moment before trying the next model
-      await new Promise((resolve) => setTimeout(resolve, 500));
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        console.log(`Calling Gemini API using model: ${modelName} (attempt ${attempt}/3)`);
+        const response = await ai.models.generateContent({
+          model: modelName,
+          contents: params.contents,
+          config: params.config,
+        });
+        return response;
+      } catch (err: any) {
+        lastError = err;
+        console.warn(`Failed to call Gemini using ${modelName} on attempt ${attempt}/3:`, err.message || err);
+        if (attempt < 3) {
+          const backoffTime = attempt * 1000;
+          await new Promise((resolve) => setTimeout(resolve, backoffTime));
+        }
+      }
     }
+    // Wait a short moment before trying the next model
+    await new Promise((resolve) => setTimeout(resolve, 500));
   }
 
   throw lastError || new Error("All Gemini models failed to generate content");
