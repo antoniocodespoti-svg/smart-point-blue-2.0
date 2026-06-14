@@ -54,24 +54,29 @@ export function UserPointsHistoryPanel({ user, onUpdateUserCredits, showFeedback
   const [inputBonus, setInputBonus] = useState<string>("");
   const [inputNote, setInputNote] = useState<string>("Rifornimento manuale");
 
-  // Load rows from localStorage for this user
+  // Load rows from Firestore/localStorage for this user
   useEffect(() => {
-    const key = `ww_points_history_${user.id}`;
-    const saved = localStorage.getItem(key);
-    if (saved) {
-      try {
-        setRows(JSON.parse(saved));
-      } catch (e) {
+    if (user.pointsHistory) {
+      setRows(user.pointsHistory);
+    } else {
+      const key = `ww_points_history_${user.id}`;
+      const saved = localStorage.getItem(key);
+      if (saved) {
+        try {
+          setRows(JSON.parse(saved));
+        } catch (e) {
+          setRows([]);
+        }
+      } else {
         setRows([]);
       }
-    } else {
-      setRows([]);
     }
-  }, [user.id]);
+  }, [user.id, user.pointsHistory]);
 
   const saveRows = (newRows: PointsRow[]) => {
     setRows(newRows);
     localStorage.setItem(`ww_points_history_${user.id}`, JSON.stringify(newRows));
+    updateLocalUser(user.id, { pointsHistory: newRows });
   };
 
   const handleAddRow = (e: React.FormEvent) => {
@@ -360,6 +365,18 @@ export function AdminDashboard({ currentUser, onRefreshCurrentUser }: AdminDashb
     }
   };
 
+  const handleApproveUser = async (userId: string) => {
+    const updatedUsers = users.map(u => {
+      if (u.id === userId) {
+        return { ...u, approved: true };
+      }
+      return u;
+    });
+    setUsers(updatedUsers);
+    updateLocalUser(userId, { approved: true });
+    showFeedbackMsg("Utente approvato con successo!");
+  };
+
   // Quick action: recharge all users
   const handleRechargeAll = async () => {
     const parsedAmount = Math.max(0, Number(rechargeAmount) || 5);
@@ -574,6 +591,55 @@ export function AdminDashboard({ currentUser, onRefreshCurrentUser }: AdminDashb
 
       </div>
 
+      {/* Pending Registration Requests Panel */}
+      {(() => {
+        const pendingUsersList = users.filter(u => u.approved === false);
+        if (pendingUsersList.length === 0) return null;
+        return (
+          <div className="bg-amber-50/50 border border-amber-200/50 rounded-3xl p-6 text-left space-y-4 shadow-sm animate-fade-in">
+            <div>
+              <h3 className="text-sm font-black text-amber-950 flex items-center gap-2">
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
+                </span>
+                Richieste di Registrazione in Attesa ({pendingUsersList.length})
+              </h3>
+              <p className="text-[10px] text-amber-800/80 font-medium">Questi utenti si sono appena registrati e necessitano della tua approvazione per poter accedere ed utilizzare il diario.</p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {pendingUsersList.map(u => (
+                <div key={u.id} className="bg-white border border-amber-100/50 hover:border-amber-200/50 rounded-2xl p-4 flex justify-between items-center shadow-xs transition">
+                  <div className="space-y-1">
+                    <span className="block text-xs font-black text-slate-800 leading-none">{u.name}</span>
+                    <span className="block text-[10px] text-slate-400 font-mono">{u.email}</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleApproveUser(u.id)}
+                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] rounded-xl transition cursor-pointer shadow-xs"
+                    >
+                      Approva
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUserToDeleteId(u.id);
+                        showFeedbackMsg("Utilizza la tabella sottostante per rifiutare/eliminare l'utente.");
+                      }}
+                      className="px-3 py-1.5 bg-rose-50 border border-rose-100 hover:bg-rose-100 text-rose-700 font-bold text-[10px] rounded-xl transition cursor-pointer"
+                    >
+                      Rifiuta
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Main Interactive Table Grid */}
       <div className="bg-white border border-slate-100 rounded-3xl shadow-sm overflow-hidden text-left">
         
@@ -678,11 +744,16 @@ export function AdminDashboard({ currentUser, onRefreshCurrentUser }: AdminDashb
                               {u.name.substring(0, 2).toUpperCase()}
                             </span>
                             <div>
-                              <div className="flex items-center gap-1.5">
+                              <div className="flex items-center gap-1.5 flex-wrap">
                                 <span className="font-bold text-xs text-slate-800">{u.name}</span>
                                 {isPowerUser && (
                                   <span className="bg-indigo-600 text-white font-extrabold text-[8px] px-1.5 py-0.5 rounded tracking-wide uppercase select-none">
                                     Amministratore
+                                  </span>
+                                )}
+                                {u.approved === false && (
+                                  <span className="bg-amber-500 text-white font-black text-[8px] px-1.5 py-0.5 rounded tracking-wide uppercase select-none">
+                                    In attesa
                                   </span>
                                 )}
                               </div>
@@ -724,6 +795,14 @@ export function AdminDashboard({ currentUser, onRefreshCurrentUser }: AdminDashb
                         {/* Admin actions block */}
                         <td className="py-4 px-5 text-center" onClick={(e) => e.stopPropagation()}>
                           <div className="flex gap-2 justify-center items-center font-sans">
+                            {u.approved === false && (
+                              <button
+                                onClick={() => handleApproveUser(u.id)}
+                                className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black rounded-lg cursor-pointer transition shadow-xs whitespace-nowrap"
+                              >
+                                Approva
+                              </button>
+                            )}
                             {userToDeleteId === u.id ? (
                                 <div className="flex gap-1 items-center">
                                   <button

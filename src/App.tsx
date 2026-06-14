@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { MenuPlanner } from "./components/MenuPlanner";
-import { updateLocalUser, deleteLocalUser } from "./lib/userDb";
+import { updateLocalUser, deleteLocalUser, initFirestoreSync } from "./lib/userDb";
 import { DailyTracker } from "./components/DailyTracker";
 import { ZeroPointList } from "./components/ZeroPointList";
 import { BudgetCalculator } from "./components/BudgetCalculator";
@@ -56,16 +56,26 @@ export default function App() {
   // Keep track of the active user ID whose budget has been initialized/loaded in state
   const lastLoadedUserIdRef = React.useRef<string | null>(currentUser?.id || null);
 
-  // Sync state and load initial records whenever the active user changes
+  // Synchronize state and initial records whenever the active user changes
   useEffect(() => {
     if (currentUser) {
       const savedBudget = localStorage.getItem(`ww_blue_budget_${currentUser.id}`);
       const bgToSet = savedBudget ? parseInt(savedBudget) : currentUser.budgetPoints || 23;
-      setBudget(bgToSet);
+      setBudget(prev => prev !== bgToSet ? bgToSet : prev);
       lastLoadedUserIdRef.current = currentUser.id;
 
-      const savedTracker = localStorage.getItem(`ww_blue_tracked_${currentUser.id}`);
-      setTrackedFoods(savedTracker ? JSON.parse(savedTracker) : []);
+      const cloudTracked = currentUser.trackedFoods;
+      if (cloudTracked) {
+        if (JSON.stringify(trackedFoods) !== JSON.stringify(cloudTracked)) {
+          setTrackedFoods(cloudTracked);
+        }
+      } else {
+        const savedTracker = localStorage.getItem(`ww_blue_tracked_${currentUser.id}`);
+        const localTracked = savedTracker ? JSON.parse(savedTracker) : [];
+        if (JSON.stringify(trackedFoods) !== JSON.stringify(localTracked)) {
+          setTrackedFoods(localTracked);
+        }
+      }
     } else {
       lastLoadedUserIdRef.current = null;
     }
@@ -74,14 +84,12 @@ export default function App() {
   // Persist budget
   useEffect(() => {
     if (currentUser) {
-      // Avoid overwriting correct user data with a stale budget state during user switching
       if (lastLoadedUserIdRef.current !== currentUser.id) {
         return;
       }
 
       localStorage.setItem(`ww_blue_budget_${currentUser.id}`, budget.toString());
       
-      // Force update current user session to reflect active budget
       const savedCurUserRaw = localStorage.getItem("ww_current_user");
       if (savedCurUserRaw) {
         const curUser: UserProfile = JSON.parse(savedCurUserRaw);
@@ -94,7 +102,7 @@ export default function App() {
     }
   }, [budget, currentUser]);
 
-  // Persist tracked foods
+  // Persist tracked foods in local storage only (cache)
   useEffect(() => {
     if (currentUser) {
       localStorage.setItem(`ww_blue_tracked_${currentUser.id}`, JSON.stringify(trackedFoods));
@@ -109,6 +117,43 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("ww_auto_tablet", autoTabletScale.toString());
   }, [autoTabletScale]);
+
+  // Start real-time Firestore synchronization on mount
+  useEffect(() => {
+    const unsubscribe = initFirestoreSync(
+      (updatedUser) => {
+        setCurrentUser((prevUser) => {
+          if (!prevUser || prevUser.id !== updatedUser.id) {
+            return updatedUser;
+          }
+          const hasChanged = 
+            prevUser.budgetPoints !== updatedUser.budgetPoints ||
+            prevUser.aiCredits !== updatedUser.aiCredits ||
+            prevUser.approved !== updatedUser.approved ||
+            prevUser.gender !== updatedUser.gender ||
+            prevUser.age !== updatedUser.age ||
+            prevUser.weight !== updatedUser.weight ||
+            prevUser.height !== updatedUser.height ||
+            prevUser.activityLevel !== updatedUser.activityLevel ||
+            prevUser.weightGoal !== updatedUser.weightGoal ||
+            JSON.stringify(prevUser.trackedFoods || []) !== JSON.stringify(updatedUser.trackedFoods || []) ||
+            JSON.stringify(prevUser.pointsHistory || []) !== JSON.stringify(updatedUser.pointsHistory || []);
+          return hasChanged ? updatedUser : prevUser;
+        });
+
+        if (updatedUser.budgetPoints !== undefined) {
+          setBudget((prevBudget) => prevBudget !== updatedUser.budgetPoints ? updatedUser.budgetPoints : prevBudget);
+        }
+        if (updatedUser.trackedFoods) {
+          setTrackedFoods((prevTracker) => {
+            const isDiff = JSON.stringify(prevTracker) !== JSON.stringify(updatedUser.trackedFoods);
+            return isDiff ? updatedUser.trackedFoods : prevTracker;
+          });
+        }
+      }
+    );
+    return () => unsubscribe();
+  }, []);
 
   // Handle auto scaling based on screen size if active
   useEffect(() => {
@@ -193,7 +238,13 @@ export default function App() {
   };
 
   const handleAddFood = (food: FoodTrackItem) => {
-    setTrackedFoods((prev) => [food, ...prev]);
+    setTrackedFoods((prev) => {
+      const updated = [food, ...prev];
+      if (currentUser) {
+        updateLocalUser(currentUser.id, { trackedFoods: updated });
+      }
+      return updated;
+    });
   };
 
   const handleAddFoodWithoutId = (food: Omit<FoodTrackItem, "id">) => {
@@ -201,15 +252,30 @@ export default function App() {
       ...food,
       id: "ai-" + Date.now() + "-" + Math.random()
     };
-    setTrackedFoods((prev) => [withId, ...prev]);
+    setTrackedFoods((prev) => {
+      const updated = [withId, ...prev];
+      if (currentUser) {
+        updateLocalUser(currentUser.id, { trackedFoods: updated });
+      }
+      return updated;
+    });
   };
 
   const handleRemoveFood = (id: string) => {
-    setTrackedFoods((prev) => prev.filter((item) => item.id !== id));
+    setTrackedFoods((prev) => {
+      const updated = prev.filter((item) => item.id !== id);
+      if (currentUser) {
+        updateLocalUser(currentUser.id, { trackedFoods: updated });
+      }
+      return updated;
+    });
   };
 
   const handleClearAll = () => {
     setTrackedFoods([]);
+    if (currentUser) {
+      updateLocalUser(currentUser.id, { trackedFoods: [] });
+    }
   };
 
   const handleCopyLink = () => {

@@ -104,5 +104,17 @@ export interface UserProfile {
   aiCredits?: number;
   totalTokensUsed?: number;
   totalCostEur?: number;
+  approved?: boolean;
+  trackedFoods?: FoodTrackItem[];
+  pointsHistory?: any[];
 }
+
+export interface PointsRow {
+  id: string;
+  data: string; // is the date string like YYYY-MM-DD
+  punti: number; // standard credits loaded
+  puntiBonus: number; // bonus credits loaded
+  note: string;
+}
+
 
