@@ -24,7 +24,8 @@ import {
   getLocalUsers, 
   saveLocalUsers, 
   updateLocalUser, 
-  deleteLocalUser 
+  deleteLocalUser,
+  initFirestoreSync
 } from "../lib/userDb";
 
 export interface PointsRow {
@@ -37,11 +38,11 @@ export interface PointsRow {
 
 interface UserPointsHistoryPanelProps {
   user: UserProfile;
-  onUpdateUserCredits: (userId: string, newCredits: number) => void;
+  onUpdateUser: (userId: string, updatedData: Partial<UserProfile>) => void;
   showFeedbackMsg: (msg: string) => void;
 }
 
-export function UserPointsHistoryPanel({ user, onUpdateUserCredits, showFeedbackMsg }: UserPointsHistoryPanelProps) {
+export function UserPointsHistoryPanel({ user, onUpdateUser, showFeedbackMsg }: UserPointsHistoryPanelProps) {
   const [rows, setRows] = useState<PointsRow[]>([]);
   const [inputDate, setInputDate] = useState(() => {
     const today = new Date();
@@ -73,12 +74,6 @@ export function UserPointsHistoryPanel({ user, onUpdateUserCredits, showFeedback
     }
   }, [user.id, user.pointsHistory]);
 
-  const saveRows = (newRows: PointsRow[]) => {
-    setRows(newRows);
-    localStorage.setItem(`ww_points_history_${user.id}`, JSON.stringify(newRows));
-    updateLocalUser(user.id, { pointsHistory: newRows });
-  };
-
   const handleAddRow = (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputDate) return;
@@ -92,13 +87,19 @@ export function UserPointsHistoryPanel({ user, onUpdateUserCredits, showFeedback
     };
 
     const updated = [...rows, newRow];
-    saveRows(updated);
+    setRows(updated);
+    localStorage.setItem(`ww_points_history_${user.id}`, JSON.stringify(updated));
 
     // Increment user credits by standard points + bonus points
     const addedCredits = newRow.punti + newRow.puntiBonus;
+    const updatedCredits = Math.max(0, (user.aiCredits ?? 5) + addedCredits);
+
+    onUpdateUser(user.id, {
+      pointsHistory: updated,
+      aiCredits: updatedCredits
+    });
+
     if (addedCredits > 0) {
-      const updatedCredits = Math.max(0, (user.aiCredits ?? 5) + addedCredits);
-      onUpdateUserCredits(user.id, updatedCredits);
       showFeedbackMsg(`Aggiunti +${addedCredits} crediti a ${user.name}!`);
     } else {
       showFeedbackMsg("Riga aggiunta con successo!");
@@ -112,14 +113,18 @@ export function UserPointsHistoryPanel({ user, onUpdateUserCredits, showFeedback
 
   const handleDeleteRow = (rowId: string, itemPoints: number, itemBonus: number) => {
     const filtered = rows.filter(r => r.id !== rowId);
-    saveRows(filtered);
+    setRows(filtered);
+    localStorage.setItem(`ww_points_history_${user.id}`, JSON.stringify(filtered));
 
     // If we are deleting a row, reverse the credits safely
     const removedCredits = itemPoints + itemBonus;
-    if (removedCredits > 0) {
-      const updatedCredits = Math.max(0, (user.aiCredits ?? 5) - removedCredits);
-      onUpdateUserCredits(user.id, updatedCredits);
-    }
+    const updatedCredits = Math.max(0, (user.aiCredits ?? 5) - removedCredits);
+
+    onUpdateUser(user.id, {
+      pointsHistory: filtered,
+      aiCredits: updatedCredits
+    });
+
     showFeedbackMsg("Riga rimossa dal registro.");
   };
 
@@ -280,33 +285,21 @@ export function AdminDashboard({ currentUser, onRefreshCurrentUser }: AdminDashb
   const [userToDeleteId, setUserToDeleteId] = useState<string | null>(null);
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
 
-  // Load all registered users from local state
-  const loadUsers = async () => {
-    try {
-      const parsed = getLocalUsers();
+  useEffect(() => {
+    if (!currentUser) return;
 
-      // Ensure metrics exist
-      const sanitized = parsed.map(u => ({
+    // Listen in real-time to Firestore users collection
+    const unsubscribe = initFirestoreSync(undefined, (allUsers) => {
+      const sanitized = allUsers.map(u => ({
         ...u,
         aiCredits: u.aiCredits ?? 5,
         totalTokensUsed: u.totalTokensUsed ?? 0,
         totalCostEur: u.totalCostEur ?? 0
       }));
       setUsers(sanitized);
-    } catch (err) {
-      console.error("Error loading users:", err);
-      const sanitizedCurrent = {
-        ...currentUser,
-        aiCredits: currentUser.aiCredits ?? 5,
-        totalTokensUsed: currentUser.totalTokensUsed ?? 0,
-        totalCostEur: currentUser.totalCostEur ?? 0
-      };
-      setUsers([sanitizedCurrent]);
-    }
-  };
+    });
 
-  useEffect(() => {
-    loadUsers();
+    return () => unsubscribe();
   }, [currentUser]);
 
   const showFeedbackMsg = (msg: string) => {
@@ -343,22 +336,21 @@ export function AdminDashboard({ currentUser, onRefreshCurrentUser }: AdminDashb
     showFeedbackMsg("Crediti aggiornati con successo!");
   };
 
-  const handleUpdateUserCredits = (userId: string, newCredits: number) => {
+  const handleUpdateUser = (userId: string, updatedData: Partial<UserProfile>) => {
     const updatedUsers = users.map(u => {
       if (u.id === userId) {
-        return { ...u, aiCredits: newCredits };
+        return { ...u, ...updatedData };
       }
       return u;
     });
     setUsers(updatedUsers);
-    updateLocalUser(userId, { aiCredits: newCredits });
+    updateLocalUser(userId, updatedData);
 
     // If it is the current logged-in user, sync session
     if (userId === currentUser.id) {
       const curUserSaved = localStorage.getItem("ww_current_user");
       if (curUserSaved) {
-        const parsed = JSON.parse(curUserSaved);
-        parsed.aiCredits = newCredits;
+        const parsed = { ...JSON.parse(curUserSaved), ...updatedData };
         localStorage.setItem("ww_current_user", JSON.stringify(parsed));
         onRefreshCurrentUser();
       }
@@ -701,24 +693,25 @@ export function AdminDashboard({ currentUser, onRefreshCurrentUser }: AdminDashb
                     u.name.toLowerCase() === "bruna65b" ||
                     u.name.toLowerCase() === "admin";
 
-                  // Calcola i punti caricati e bonus ricarica dal localStorage per ogni utente
-                  const pointsHistoryKey = `ww_points_history_${u.id}`;
-                  const savedHistory = localStorage.getItem(pointsHistoryKey);
+                  // Calcola i punti caricati e bonus ricarica dal database o localStorage per ogni utente
+                  const rowsSource = u.pointsHistory || (() => {
+                    const key = `ww_points_history_${u.id}`;
+                    const saved = localStorage.getItem(key);
+                    if (saved) {
+                      try {
+                        const parsed = JSON.parse(saved);
+                        if (Array.isArray(parsed)) return parsed;
+                      } catch (e) {}
+                    }
+                    return [];
+                  })();
+
                   let totalStandardPoints = 0;
                   let totalBonusPoints = 0;
-                  if (savedHistory) {
-                    try {
-                      const rows = JSON.parse(savedHistory);
-                      if (Array.isArray(rows)) {
-                        rows.forEach((r: any) => {
-                          totalStandardPoints += Number(r.punti) || 0;
-                          totalBonusPoints += Number(r.puntiBonus) || 0;
-                        });
-                      }
-                    } catch (e) {
-                      // ignore parse errors
-                    }
-                  }
+                  rowsSource.forEach((r: any) => {
+                    totalStandardPoints += Number(r.punti) || 0;
+                    totalBonusPoints += Number(r.puntiBonus) || 0;
+                  });
                   const bonusInEur = totalBonusPoints / 1000;
                   const userCost = u.totalCostEur ?? 0;
 
@@ -844,7 +837,7 @@ export function AdminDashboard({ currentUser, onRefreshCurrentUser }: AdminDashb
                           <td colSpan={6} className="p-4 sm:p-6 border-b border-slate-200/50 bg-slate-50/20">
                             <UserPointsHistoryPanel 
                               user={u} 
-                              onUpdateUserCredits={handleUpdateUserCredits}
+                              onUpdateUser={handleUpdateUser}
                               showFeedbackMsg={showFeedbackMsg}
                             />
                           </td>

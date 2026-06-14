@@ -119,10 +119,17 @@ export const createLocalUser = (profile: UserProfile): UserProfile => {
 export const updateLocalUser = (userId: string, updatedData: Partial<UserProfile>): UserProfile | null => {
   const users = getLocalUsers();
   const index = users.findIndex(u => u.id === userId);
-  if (index === -1) return null;
   
-  const updatedUser = { ...users[index], ...updatedData };
-  users[index] = updatedUser;
+  let updatedUser: UserProfile;
+  if (index === -1) {
+    // If user is not cached locally, seed a minimum structure before merging
+    updatedUser = { id: userId, ...updatedData } as UserProfile;
+    users.push(updatedUser);
+  } else {
+    updatedUser = { ...users[index], ...updatedData };
+    users[index] = updatedUser;
+  }
+  
   localStorage.setItem(USERS_KEY, JSON.stringify(users));
   
   // Async firestore update
