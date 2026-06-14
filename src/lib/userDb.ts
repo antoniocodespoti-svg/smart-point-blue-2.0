@@ -162,8 +162,16 @@ export const initFirestoreSync = (
   
   return onSnapshot(usersCol, async (snapshot) => {
     if (snapshot.empty) {
-      // Seed Firestore if completely empty
+      // Seed Firestore with default profiles if completely empty, but do NOT block local storage or callback notifications
       console.log("Firestore empty! Seeding default user profiles...");
+      const seededList = [DEFAULT_DEMO_PROFILE, DEFAULT_BRUNA_PROFILE];
+      
+      // Save to local cache immediately so the UI doesn't remain empty
+      localStorage.setItem(USERS_KEY, JSON.stringify(seededList));
+      if (onAllUsersUpdate) {
+        onAllUsersUpdate(seededList);
+      }
+      
       try {
         await setDoc(doc(db, "users", DEFAULT_DEMO_PROFILE.id), DEFAULT_DEMO_PROFILE);
         await setDoc(doc(db, "users", DEFAULT_BRUNA_PROFILE.id), DEFAULT_BRUNA_PROFILE);

@@ -277,7 +277,19 @@ interface AdminDashboardProps {
 }
 
 export function AdminDashboard({ currentUser, onRefreshCurrentUser }: AdminDashboardProps) {
-  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [users, setUsers] = useState<UserProfile[]>(() => {
+    try {
+      const local = getLocalUsers();
+      return local.map(u => ({
+        ...u,
+        aiCredits: u.aiCredits ?? 5,
+        totalTokensUsed: u.totalTokensUsed ?? 0,
+        totalCostEur: u.totalCostEur ?? 0
+      }));
+    } catch (e) {
+      return [];
+    }
+  });
   const [searchTerm, setSearchTerm] = useState("");
   const [filterActiveOnly, setFilterActiveOnly] = useState(false);
   const [rechargeAmount, setRechargeAmount] = useState<string>("");
@@ -459,7 +471,6 @@ export function AdminDashboard({ currentUser, onRefreshCurrentUser }: AdminDashb
       }
 
       showFeedbackMsg("Reset completato con successo! Tutti gli account tranne demo e admin rimossi.");
-      await loadUsers();
     } catch (err: any) {
       console.error("Error resetting all users:", err);
       showFeedbackMsg("Errore durante il reset dei profili: " + err.message);
@@ -519,7 +530,7 @@ export function AdminDashboard({ currentUser, onRefreshCurrentUser }: AdminDashb
             <div className="text-left">
               <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider">Utenti Registrati</span>
               <span className="text-2xl font-black text-slate-800">{totalUsers}</span>
-              <span className="block text-[9px] text-slate-400 mt-0.5">Database locale</span>
+              <span className="block text-[9px] text-slate-400 mt-0.5">Sincronizzato Cloud (Real-time)</span>
             </div>
           </div>
           <div className="p-4 bg-slate-50 border border-slate-100 rounded-xl flex items-center gap-2 text-slate-400">
