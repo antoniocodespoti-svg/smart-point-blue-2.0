@@ -5,33 +5,35 @@ import './index.css';
 
 // Global error filtering to suppress benign browser extension / MetaMask errors in iframe sandbox
 if (typeof window !== "undefined") {
+  const isExtensionError = (text: string) => {
+    const low = text.toLowerCase();
+    return (
+      low.includes("metamask") || 
+      low.includes("ethereum") || 
+      low.includes("wallet") || 
+      low.includes("rpc") ||
+      low.includes("extension") ||
+      low.includes("crypto") ||
+      low.includes("web3")
+    );
+  };
+
   window.addEventListener("error", (event) => {
-    const msg = event.message?.toLowerCase() || "";
-    if (
-      msg.includes("metamask") || 
-      msg.includes("ethereum") || 
-      msg.includes("wallet") || 
-      msg.includes("rpc") ||
-      msg.includes("extension")
-    ) {
+    const msg = event.message || "";
+    const errorMsg = event.error?.message || "";
+    if (isExtensionError(msg) || isExtensionError(errorMsg)) {
       event.preventDefault();
       event.stopPropagation();
-      console.warn("Muted benign browser extension error:", event.message);
+      console.warn("Muted benign browser extension error:", msg || errorMsg);
     }
   });
 
   window.addEventListener("unhandledrejection", (event) => {
-    const reasonMsg = String(event.reason?.message || event.reason).toLowerCase();
-    if (
-      reasonMsg.includes("metamask") || 
-      reasonMsg.includes("ethereum") || 
-      reasonMsg.includes("wallet") || 
-      reasonMsg.includes("rpc") ||
-      reasonMsg.includes("extension")
-    ) {
+    const reasonMsg = String(event.reason?.message || event.reason || "").toLowerCase();
+    if (isExtensionError(reasonMsg)) {
       event.preventDefault();
       event.stopPropagation();
-      console.warn("Muted benign browser extension promise rejection:", event.reason?.message || event.reason);
+      console.warn("Muted benign browser extension promise rejection:", reasonMsg);
     }
   });
 }

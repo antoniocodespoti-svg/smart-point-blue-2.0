@@ -9,9 +9,24 @@ service cloud.firestore {
     // Allow read/write for all users under security validation since they use password-based authentication inside the app
     match /users/{userId} {
       allow read, write: if true;
+
+      // Tracked foods subcollection rules
+      match /tracked_foods/{foodId} {
+        allow read, write: if true;
+      }
+
+      // Points history subcollection rules
+      match /points_history/{historyId} {
+        allow read, write: if true;
+      }
     }
 
     match /usernames/{usernameLower} {
+      allow read, write: if true;
+    }
+
+    // Allow connection testing document read/write
+    match /test/{docId} {
       allow read, write: if true;
     }
   }
