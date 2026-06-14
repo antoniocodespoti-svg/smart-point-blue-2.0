@@ -296,6 +296,7 @@ export function AdminDashboard({ currentUser, onRefreshCurrentUser }: AdminDashb
   const [feedback, setFeedback] = useState<string | null>(null);
   const [userToDeleteId, setUserToDeleteId] = useState<string | null>(null);
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!currentUser) return;
@@ -309,6 +310,10 @@ export function AdminDashboard({ currentUser, onRefreshCurrentUser }: AdminDashb
         totalCostEur: u.totalCostEur ?? 0
       }));
       setUsers(sanitized);
+      setSyncError(null);
+    }, (err) => {
+      console.error("Firebase sync error inside admin dashboard:", err);
+      setSyncError(err?.message || "Impossibile caricare i dati in tempo reale da Firebase. Verificare la connessione o i permessi.");
     });
 
     return () => unsubscribe();
@@ -530,13 +535,24 @@ export function AdminDashboard({ currentUser, onRefreshCurrentUser }: AdminDashb
             <div className="text-left">
               <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider">Utenti Registrati</span>
               <span className="text-2xl font-black text-slate-800">{totalUsers}</span>
-              <span className="block text-[9px] text-slate-400 mt-0.5">Sincronizzato Cloud (Real-time)</span>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className={`w-2 h-2 rounded-full ${syncError ? "bg-rose-500 animate-pulse" : "bg-emerald-500"}`} />
+                <span className="block text-[9px] text-slate-500">
+                  {syncError ? "Sincronizzazione Fallita" : "Sincronizzato Cloud (Real-time)"}
+                </span>
+              </div>
             </div>
           </div>
+          {syncError && (
+            <div className="p-3 bg-rose-50 border border-rose-100 rounded-xl text-left space-y-1">
+              <span className="text-[10px] font-black text-rose-800 select-none">⚠️ Errore Database Cloud</span>
+              <p className="text-[9px] leading-relaxed text-rose-700">{syncError}</p>
+            </div>
+          )}
           <div className="p-4 bg-slate-50 border border-slate-100 rounded-xl flex items-center gap-2 text-slate-400">
             <Info className="w-4 h-4 text-slate-500 shrink-0" />
             <p className="text-[9px] leading-tight text-left">
-              Consiglio: per i test di compatibilità, le credenziali dei profili registrati sono salvate interamente in chiaro nel client database (localStorage) del browser in uso.
+              Consiglio: grazie al re-sync intelligente, tutti i profili registrati offline sul dispositivo vengono caricati in automatico su Firestore non appena viene ristabilita la connessione cloud.
             </p>
           </div>
         </div>

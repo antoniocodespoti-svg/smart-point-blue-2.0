@@ -156,7 +156,8 @@ export const deleteLocalUser = (userId: string): boolean => {
 // Start real-time Firestore synchronization of all users and local caches
 export const initFirestoreSync = (
   onCurrentUserUpdate?: (user: UserProfile) => void,
-  onAllUsersUpdate?: (users: UserProfile[]) => void
+  onAllUsersUpdate?: (users: UserProfile[]) => void,
+  onSyncError?: (error: any) => void
 ) => {
   const usersCol = collection(db, "users");
   
@@ -177,6 +178,7 @@ export const initFirestoreSync = (
         await setDoc(doc(db, "users", DEFAULT_BRUNA_PROFILE.id), DEFAULT_BRUNA_PROFILE);
       } catch (e) {
         console.error("Failed to seed default database values on empty Firestore:", e);
+        if (onSyncError) onSyncError(e);
       }
       return;
     }
@@ -186,6 +188,24 @@ export const initFirestoreSync = (
       const data = docSnap.data() as UserProfile;
       list.push(data);
     });
+
+    // Auto-remerge locally-created users that aren't on high-cloud database yet
+    const localRaw = localStorage.getItem(USERS_KEY);
+    if (localRaw) {
+      try {
+        const localUsers: UserProfile[] = JSON.parse(localRaw);
+        const missingFromFirestore = localUsers.filter(lu => lu.id && !list.some(dbu => dbu.id === lu.id));
+        if (missingFromFirestore.length > 0) {
+          console.log(`Auto-uploading ${missingFromFirestore.length} locally-created users to Firestore...`);
+          for (const lu of missingFromFirestore) {
+            await setDoc(doc(db, "users", lu.id), lu);
+            list.push(lu);
+          }
+        }
+      } catch (err) {
+        console.error("Error auto-syncing local users to Firestore:", err);
+      }
+    }
     
     // Check and verify Bruna remains up-to-date in Firestore
     const hasBruna = list.some(u => u.name.toLowerCase() === "bruna" || u.name.toLowerCase() === "bruna65b");
@@ -195,6 +215,7 @@ export const initFirestoreSync = (
         list.push(DEFAULT_BRUNA_PROFILE);
       } catch (e) {
         console.error("Could not write missing Bruna profile to firestore:", e);
+        if (onSyncError) onSyncError(e);
       }
     }
     
@@ -238,6 +259,7 @@ export const initFirestoreSync = (
     }
   }, (err) => {
     console.error("Firestore onSnapshot error:", err);
+    if (onSyncError) onSyncError(err);
   });
 };
 
