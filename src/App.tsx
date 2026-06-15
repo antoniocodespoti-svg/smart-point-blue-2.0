@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { MenuPlanner } from "./components/MenuPlanner";
-import { updateLocalUser, deleteLocalUser, initFirestoreSync } from "./lib/userDb";
+import { updateLocalUser, deleteLocalUser, initFirestoreSync, bootstrapFirestoreSync } from "./lib/userDb";
 import { DailyTracker } from "./components/DailyTracker";
 import { ZeroPointList } from "./components/ZeroPointList";
 import { BudgetCalculator } from "./components/BudgetCalculator";
@@ -120,6 +120,13 @@ export default function App() {
 
   // Start real-time Firestore synchronization on mount
   useEffect(() => {
+    // Run the robust bootstrap sync once
+    bootstrapFirestoreSync().then(() => {
+      console.log("Firestore bootstrap completed correctly.");
+    }).catch(err => {
+      console.error("Firestore bootstrap error:", err);
+    });
+
     const unsubscribe = initFirestoreSync(
       (updatedUser) => {
         setCurrentUser((prevUser) => {

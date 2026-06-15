@@ -1,6 +1,6 @@
 import { UserProfile } from "../types";
 import { SUGGESTED_BUDGET_CALCULATOR } from "../data";
-import { doc, setDoc, deleteDoc, updateDoc, collection, onSnapshot } from "firebase/firestore";
+import { doc, setDoc, deleteDoc, updateDoc, collection, onSnapshot, getDocs } from "firebase/firestore";
 import { db } from "./firebase";
 import { handleFirestoreError, OperationType } from "./firestoreService";
 
@@ -157,7 +157,53 @@ export const deleteLocalUser = (userId: string): boolean => {
   return true;
 };
 
-// Start real-time Firestore synchronization of all users and local caches
+// Safe one-time Firestore bootstrap seeding and local upload on application mount
+export const bootstrapFirestoreSync = async (): Promise<void> => {
+  try {
+    const usersCol = collection(db, "users");
+    const snapshot = await getDocs(usersCol);
+    let list: UserProfile[] = [];
+    snapshot.forEach((docSnap) => {
+      list.push(docSnap.data() as UserProfile);
+    });
+
+    // Seed Firestore with default profiles if completely empty
+    if (snapshot.empty) {
+      console.log("Firestore empty! Seeding default user profiles...");
+      const seededList = [DEFAULT_DEMO_PROFILE, DEFAULT_BRUNA_PROFILE];
+      
+      // Save to local cache immediately so the UI doesn't remain empty
+      localStorage.setItem(USERS_KEY, JSON.stringify(seededList));
+      
+      await setDoc(doc(db, "users", DEFAULT_DEMO_PROFILE.id), DEFAULT_DEMO_PROFILE);
+      await setDoc(doc(db, "users", DEFAULT_BRUNA_PROFILE.id), DEFAULT_BRUNA_PROFILE);
+      return;
+    }
+
+    // Auto-remerge locally-created users that aren't on high-cloud database yet
+    const localRaw = localStorage.getItem(USERS_KEY);
+    if (localRaw) {
+      const localUsers: UserProfile[] = JSON.parse(localRaw);
+      const missingFromFirestore = localUsers.filter(lu => lu.id && !list.some(dbu => dbu.id === lu.id));
+      if (missingFromFirestore.length > 0) {
+        console.log(`Auto-uploading ${missingFromFirestore.length} locally-created users to Firestore...`);
+        for (const lu of missingFromFirestore) {
+          await setDoc(doc(db, "users", lu.id), lu);
+        }
+      }
+    }
+
+    // Check and verify Bruna remains up-to-date in Firestore
+    const hasBruna = list.some(u => u.name.toLowerCase() === "bruna" || u.name.toLowerCase() === "bruna65b");
+    if (!hasBruna) {
+      await setDoc(doc(db, "users", DEFAULT_BRUNA_PROFILE.id), DEFAULT_BRUNA_PROFILE);
+    }
+  } catch (err) {
+    console.error("Error during firestore bootstrap sync:", err);
+  }
+};
+
+// Start real-time Firestore synchronization of all users and local caches (Pure Read/Listen listener)
 export const initFirestoreSync = (
   onCurrentUserUpdate?: (user: UserProfile) => void,
   onAllUsersUpdate?: (users: UserProfile[]) => void,
@@ -165,28 +211,13 @@ export const initFirestoreSync = (
 ) => {
   const usersCol = collection(db, "users");
   
-  return onSnapshot(usersCol, async (snapshot) => {
+  return onSnapshot(usersCol, (snapshot) => {
     if (snapshot.empty) {
-      // Seed Firestore with default profiles if completely empty, but do NOT block local storage or callback notifications
-      console.log("Firestore empty! Seeding default user profiles...");
+      // If Firestore is empty (e.g. wiped), seed from default
       const seededList = [DEFAULT_DEMO_PROFILE, DEFAULT_BRUNA_PROFILE];
-      
-      // Save to local cache immediately so the UI doesn't remain empty
       localStorage.setItem(USERS_KEY, JSON.stringify(seededList));
       if (onAllUsersUpdate) {
         onAllUsersUpdate(seededList);
-      }
-      
-      try {
-        await setDoc(doc(db, "users", DEFAULT_DEMO_PROFILE.id), DEFAULT_DEMO_PROFILE);
-        await setDoc(doc(db, "users", DEFAULT_BRUNA_PROFILE.id), DEFAULT_BRUNA_PROFILE);
-      } catch (e) {
-        console.error("Failed to seed default database values on empty Firestore:", e);
-        try {
-          handleFirestoreError(e, OperationType.CREATE, "users");
-        } catch (formattedError: any) {
-          if (onSyncError) onSyncError(formattedError);
-        }
       }
       return;
     }
@@ -197,45 +228,6 @@ export const initFirestoreSync = (
       list.push(data);
     });
 
-    // Auto-remerge locally-created users that aren't on high-cloud database yet
-    const localRaw = localStorage.getItem(USERS_KEY);
-    if (localRaw) {
-      try {
-        const localUsers: UserProfile[] = JSON.parse(localRaw);
-        const missingFromFirestore = localUsers.filter(lu => lu.id && !list.some(dbu => dbu.id === lu.id));
-        if (missingFromFirestore.length > 0) {
-          console.log(`Auto-uploading ${missingFromFirestore.length} locally-created users to Firestore...`);
-          for (const lu of missingFromFirestore) {
-            await setDoc(doc(db, "users", lu.id), lu);
-            list.push(lu);
-          }
-        }
-      } catch (err) {
-        console.error("Error auto-syncing local users to Firestore:", err);
-        try {
-          handleFirestoreError(err, OperationType.CREATE, "users");
-        } catch (formattedError: any) {
-          if (onSyncError) onSyncError(formattedError);
-        }
-      }
-    }
-    
-    // Check and verify Bruna remains up-to-date in Firestore
-    const hasBruna = list.some(u => u.name.toLowerCase() === "bruna" || u.name.toLowerCase() === "bruna65b");
-    if (!hasBruna) {
-      try {
-        await setDoc(doc(db, "users", DEFAULT_BRUNA_PROFILE.id), DEFAULT_BRUNA_PROFILE);
-        list.push(DEFAULT_BRUNA_PROFILE);
-      } catch (e) {
-        console.error("Could not write missing Bruna profile to firestore:", e);
-        try {
-          handleFirestoreError(e, OperationType.CREATE, `users/${DEFAULT_BRUNA_PROFILE.id}`);
-        } catch (formattedError: any) {
-          if (onSyncError) onSyncError(formattedError);
-        }
-      }
-    }
-    
     // Save synchronized users collection list in localStorage
     localStorage.setItem(USERS_KEY, JSON.stringify(list));
     

@@ -298,6 +298,73 @@ export function AdminDashboard({ currentUser, onRefreshCurrentUser }: AdminDashb
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
 
+  // Helper function to decode firestore sync error details and show friendly message
+  const getParsedSyncError = () => {
+    if (!syncError) return null;
+    
+    try {
+      const errorStr = syncError.trim();
+      if (errorStr.startsWith("{") && errorStr.endsWith("}")) {
+        const parsed = JSON.parse(errorStr);
+        const innerError = parsed.error || "";
+        const lowerInner = innerError.toLowerCase();
+        const isPermissionDenied = lowerInner.includes("permission-denied") || lowerInner.includes("insufficient permissions");
+        const isQuotaExceeded = lowerInner.includes("quota exceeded") || lowerInner.includes("resource_exhausted") || lowerInner.includes("exhausted");
+        const isOffline = lowerInner.includes("offline") || lowerInner.includes("network");
+
+        let userFriendlyMsg = "Errore di sincronizzazione con il Database Cloud.";
+        let recommendation = "Si è verificato un errore durante la connessione a Firestore. Il sistema continuerà ad aggiornare i dati nel tuo browser.";
+        let consoleDbLink = "";
+
+        if (isQuotaExceeded) {
+          userFriendlyMsg = "Quota Giornaliera di Firestore Superata (Spark Plan raggiunto).";
+          recommendation = "È stato superato il limite gratuito di letture o scritture giornaliere per questo database Firestore. La quota si azzera automaticamente a mezzanotte (ora di Firebase server). Se possiedi il controllo del progetto, puoi aggiornare il piano a Blaze per sbloccare limiti superiori.";
+          consoleDbLink = "https://console.firebase.google.com/project/optimistic-winter-zjk7s/firestore/databases/ai-studio-10df2630-d456-4ed5-9120-f652459e095d/data?openUpgradeDialog=true";
+        } else if (isPermissionDenied) {
+          userFriendlyMsg = "Permessi non autorizzati (Firebase Security Rules).";
+          recommendation = "Le regole di sicurezza di Firestore (firestore.rules) non consentono l'operazione richiesta. Chiudi il terminale e riapri se hai appena applicato le regole, oppure verifica di avere configurato correttamente l'accesso pubblico.";
+        } else if (isOffline) {
+          userFriendlyMsg = "Connessione Cloud non riuscita (Offline).";
+          recommendation = "Il server Firebase non risponde o il tuo dispositivo è disconnesso da Internet. I tuoi progressi vengono memorizzati localmente in sicurezza.";
+        } else if (innerError) {
+          userFriendlyMsg = innerError;
+        }
+
+        return {
+          formatted: userFriendlyMsg,
+          recommendation,
+          consoleDbLink,
+          operation: parsed.operationType || "Realtime-Sync",
+          path: parsed.path || "users",
+          details: innerError
+        };
+      }
+    } catch (e) {
+      // Fallback
+    }
+
+    const lowerStr = syncError.toLowerCase();
+    const isQuota = lowerStr.includes("quota exceeded") || lowerStr.includes("resource_exhausted") || lowerStr.includes("exhausted");
+    const isPerm = lowerStr.includes("permission-denied") || lowerStr.includes("insufficient");
+    
+    return {
+      formatted: syncError,
+      recommendation: isQuota 
+        ? "La quota di letture gratuite giornaliere di Firestore è esaurita. Il limite si resetterà a mezzanotte."
+        : isPerm 
+          ? "Controlla le regole di sicurezza di Firebase Firestore (firestore.rules) che devono essere configurate correttamente per consentire l'accesso."
+          : "Sincronizzazione momentaneamente interrotta. Verifica la connessione internet.",
+      consoleDbLink: isQuota 
+        ? "https://console.firebase.google.com/project/optimistic-winter-zjk7s/firestore/databases/ai-studio-10df2630-d456-4ed5-9120-f652459e095d/data?openUpgradeDialog=true"
+        : "",
+      operation: "Realtime-Sync",
+      path: "users",
+      details: syncError
+    };
+  };
+
+  const parsedError = getParsedSyncError();
+
   useEffect(() => {
     if (!currentUser) return;
 
@@ -543,10 +610,29 @@ export function AdminDashboard({ currentUser, onRefreshCurrentUser }: AdminDashb
               </div>
             </div>
           </div>
-          {syncError && (
-            <div className="p-3 bg-rose-50 border border-rose-100 rounded-xl text-left space-y-1">
-              <span className="text-[10px] font-black text-rose-800 select-none">⚠️ Errore Database Cloud</span>
-              <p className="text-[9px] leading-relaxed text-rose-700">{syncError}</p>
+          {parsedError && (
+            <div className="p-3 bg-rose-50 border border-rose-100 rounded-xl text-left space-y-2">
+              <span className="text-[10px] font-black text-rose-800 select-none uppercase tracking-wider block">⚠️ Errore Database Cloud</span>
+              <p className="text-[11px] font-bold text-rose-800 leading-tight">{parsedError.formatted}</p>
+              <p className="text-[9px] text-rose-700 leading-relaxed font-medium">{parsedError.recommendation}</p>
+              
+              {parsedError.consoleDbLink && (
+                <a 
+                  href={parsedError.consoleDbLink} 
+                  target="_blank" 
+                  rel="noreferrer" 
+                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-rose-150 hover:bg-rose-200 border border-rose-200 text-rose-900 rounded-lg text-[9px] font-bold transition-all transition-duration-150 mt-1"
+                >
+                  <Database className="w-3 h-3 shrink-0" />
+                  Apri Console Upgrade Database →
+                </a>
+              )}
+              
+              <div className="pt-1.5 border-t border-rose-200/40 font-mono text-[8px] text-rose-600/70 space-y-0.5">
+                <div>Operazione: {parsedError.operation}</div>
+                <div>Percorso: {parsedError.path}</div>
+                {parsedError.details && <div className="truncate max-w-full" title={parsedError.details}>Dettagli: {parsedError.details}</div>}
+              </div>
             </div>
           )}
           <div className="p-4 bg-slate-50 border border-slate-100 rounded-xl flex items-center gap-2 text-slate-400">
