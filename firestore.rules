@@ -1,27 +1,17 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Consenti l'accesso completo agli utenti
+    // Regole per la collezione dei profili utente
     match /users/{userId} {
       allow read, write: if true;
     }
-
-    // Regole per la sottocollezione dei cibi tracciati
-    match /users/{userId}/tracked_foods/{foodId} {
+    
+    // Regole ricorsive per tutte le sottocollezioni degli utenti (tracked_foods, points_history, ecc.)
+    match /users/{userId}/{allPaths=**} {
       allow read, write: if true;
     }
 
-    // Regole per la sottocollezione della cronologia dei punti
-    match /users/{userId}/points_history/{historyId} {
-      allow read, write: if true;
-    }
-
-    // Abilita i controlli dei nomi utente
-    match /usernames/{usernameLower} {
-      allow read, write: if true;
-    }
-
-    // Consenti lettura/scrittura per il documento di test della connessione
+    // Regole per il test di connessione
     match /test/{docId} {
       allow read, write: if true;
     }

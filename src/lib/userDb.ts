@@ -2,6 +2,7 @@ import { UserProfile } from "../types";
 import { SUGGESTED_BUDGET_CALCULATOR } from "../data";
 import { doc, setDoc, deleteDoc, updateDoc, collection, onSnapshot } from "firebase/firestore";
 import { db } from "./firebase";
+import { handleFirestoreError, OperationType } from "./firestoreService";
 
 const USERS_KEY = "ww_registered_users";
 
@@ -111,6 +112,7 @@ export const createLocalUser = (profile: UserProfile): UserProfile => {
   // Async firestore write
   setDoc(doc(db, "users", profile.id), profile).catch(e => {
     console.error("Firestore creation error:", e);
+    handleFirestoreError(e, OperationType.CREATE, `users/${profile.id}`);
   });
   
   return profile;
@@ -135,6 +137,7 @@ export const updateLocalUser = (userId: string, updatedData: Partial<UserProfile
   // Async firestore update
   setDoc(doc(db, "users", userId), updatedData, { merge: true }).catch(e => {
     console.error("Firestore update error:", e);
+    handleFirestoreError(e, OperationType.UPDATE, `users/${userId}`);
   });
   
   return updatedUser;
@@ -148,6 +151,7 @@ export const deleteLocalUser = (userId: string): boolean => {
   // Async firestore delete
   deleteDoc(doc(db, "users", userId)).catch(e => {
     console.error("Firestore delete error:", e);
+    handleFirestoreError(e, OperationType.DELETE, `users/${userId}`);
   });
   
   return true;
@@ -178,7 +182,11 @@ export const initFirestoreSync = (
         await setDoc(doc(db, "users", DEFAULT_BRUNA_PROFILE.id), DEFAULT_BRUNA_PROFILE);
       } catch (e) {
         console.error("Failed to seed default database values on empty Firestore:", e);
-        if (onSyncError) onSyncError(e);
+        try {
+          handleFirestoreError(e, OperationType.CREATE, "users");
+        } catch (formattedError: any) {
+          if (onSyncError) onSyncError(formattedError);
+        }
       }
       return;
     }
@@ -204,6 +212,11 @@ export const initFirestoreSync = (
         }
       } catch (err) {
         console.error("Error auto-syncing local users to Firestore:", err);
+        try {
+          handleFirestoreError(err, OperationType.CREATE, "users");
+        } catch (formattedError: any) {
+          if (onSyncError) onSyncError(formattedError);
+        }
       }
     }
     
@@ -215,7 +228,11 @@ export const initFirestoreSync = (
         list.push(DEFAULT_BRUNA_PROFILE);
       } catch (e) {
         console.error("Could not write missing Bruna profile to firestore:", e);
-        if (onSyncError) onSyncError(e);
+        try {
+          handleFirestoreError(e, OperationType.CREATE, `users/${DEFAULT_BRUNA_PROFILE.id}`);
+        } catch (formattedError: any) {
+          if (onSyncError) onSyncError(formattedError);
+        }
       }
     }
     
@@ -259,7 +276,11 @@ export const initFirestoreSync = (
     }
   }, (err) => {
     console.error("Firestore onSnapshot error:", err);
-    if (onSyncError) onSyncError(err);
+    try {
+      handleFirestoreError(err, OperationType.LIST, "users");
+    } catch (formattedError: any) {
+      if (onSyncError) onSyncError(formattedError);
+    }
   });
 };
 
